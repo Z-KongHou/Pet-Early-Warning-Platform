@@ -1,0 +1,33 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: yingshi
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/yingshi_database?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: 23050929
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.hamster.yingshi.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+jwt:
+  secret: HamsterAIoT2026SecretKeyForJWTTokenGeneration
+  expiration: 86400000
+
+ai:
+  model: glm-4-flash
+  api-url: https://open.bigmodel.cn/api/paas/v4/chat/completions
+  api-key: d175f7c031b34c869c2e2d454fcf7b90.uELNrBuyS0jiy3ys
+  timeout: 30000
