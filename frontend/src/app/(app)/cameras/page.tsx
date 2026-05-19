@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RefreshButton } from "@/components/RefreshButton";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import { ApiError, apiFetch } from "@/lib/http";
 import { authHeaders } from "@/lib/authed";
 import type { Camera, Pagination } from "@/lib/types";
@@ -11,8 +12,13 @@ export default function CamerasPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [create, setCreate] = useState({ hamsterId: "1", name: "", deviceKey: "", channelNo: "1" });
-  const [tokenInfo, setTokenInfo] = useState<string | null>(null);
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+
+  // 视频播放状态
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamProtocol, setStreamProtocol] = useState<string | null>(null);
+  const [streamCameraName, setStreamCameraName] = useState<string>("");
+  const [streamErr, setStreamErr] = useState<string | null>(null);
+  const [streamLoading, setStreamLoading] = useState(false);
 
   useEffect(() => {
     refresh().catch((e) => setErr(e instanceof Error ? e.message : "加载失败"));
@@ -23,12 +29,38 @@ export default function CamerasPage() {
     setData(d);
   }
 
+  const openStream = useCallback(async (camera: Camera) => {
+    setStreamErr(null);
+    setStreamLoading(true);
+    setStreamUrl(null);
+    setStreamCameraName(camera.name);
+    try {
+      const res = await apiFetch<{ streamUrl: string; protocol: string }>(
+        `/api/cameras/${camera.id}/stream`,
+        { headers: authHeaders() }
+      );
+      setStreamUrl(res.streamUrl);
+      setStreamProtocol(res.protocol);
+    } catch (e) {
+      setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取视频流失败");
+    } finally {
+      setStreamLoading(false);
+    }
+  }, []);
+
+  const closeStream = useCallback(() => {
+    setStreamUrl(null);
+    setStreamProtocol(null);
+    setStreamErr(null);
+    setStreamCameraName("");
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold">摄像头</h1>
-          <p className="text-sm text-zinc-500">可新增、更新、删除，并查看 token / 截图 / 流地址（数据来自后端）</p>
+          <p className="text-sm text-zinc-500">可新增、更新、删除，并查看实时视频画面</p>
         </div>
         <RefreshButton onRefresh={refresh} />
       </div>
@@ -39,6 +71,7 @@ export default function CamerasPage() {
         </div>
       ) : null}
 
+      {/* 新增摄像头表单 */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <div>
@@ -108,19 +141,43 @@ export default function CamerasPage() {
         </div>
       </div>
 
-      {tokenInfo ? (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-700">
-          <div className="font-medium">Token 信息</div>
-          <div className="mt-1 font-mono text-xs break-all">{tokenInfo}</div>
+      {/* 实时视频播放区 */}
+      {(streamUrl || streamErr || streamLoading) && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">
+              {streamLoading ? "正在连接..." : `实时画面 — ${streamCameraName}`}
+            </div>
+            <button
+              className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
+              onClick={closeStream}
+            >
+              关闭
+            </button>
+          </div>
+          {streamErr ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {streamErr}
+            </div>
+          ) : streamLoading ? (
+            <div className="flex items-center justify-center h-64 text-sm text-zinc-500">
+              <svg className="animate-spin h-5 w-5 mr-2 text-zinc-400" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              正在获取视频流地址...
+            </div>
+          ) : streamUrl ? (
+            <VideoPlayer
+              streamUrl={streamUrl}
+              protocol={streamProtocol ?? undefined}
+              onError={setStreamErr}
+            />
+          ) : null}
         </div>
-      ) : null}
-      {snapshotUrl ? (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-700">
-          <div className="font-medium">Snapshot URL</div>
-          <div className="mt-1 font-mono text-xs break-all">{snapshotUrl}</div>
-        </div>
-      ) : null}
+      )}
 
+      {/* 摄像头列表 */}
       <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-zinc-50 text-zinc-600">
@@ -144,38 +201,10 @@ export default function CamerasPage() {
                 <td className="px-4 py-2">
                   <div className="flex justify-end gap-2 flex-wrap">
                     <button
-                      className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
-                      onClick={async () => {
-                        const d = await apiFetch<{ cameraId: number; tokenExpires: string | null }>(
-                          `/api/cameras/${c.id}/token`,
-                          { headers: authHeaders() }
-                        );
-                        setTokenInfo(JSON.stringify(d));
-                      }}
+                      className="rounded-md border border-blue-200 text-blue-700 px-2 py-1 text-xs hover:bg-blue-50"
+                      onClick={() => openStream(c)}
                     >
-                      Token 状态
-                    </button>
-                    <button
-                      className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
-                      onClick={async () => {
-                        const d = await apiFetch<{ imageUrl: string }>(`/api/cameras/${c.id}/snapshot`, {
-                          headers: authHeaders(),
-                        });
-                        setSnapshotUrl(d.imageUrl);
-                      }}
-                    >
-                      截图
-                    </button>
-                    <button
-                      className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
-                      onClick={async () => {
-                        const d = await apiFetch<{ streamUrl: string; type?: string }>(`/api/cameras/${c.id}/stream`, {
-                          headers: authHeaders(),
-                        });
-                        setTokenInfo(JSON.stringify(d));
-                      }}
-                    >
-                      流地址
+                      查看实时画面
                     </button>
                     <button
                       className="rounded-md border border-red-200 text-red-700 px-2 py-1 text-xs hover:bg-red-50"
@@ -203,4 +232,3 @@ export default function CamerasPage() {
     </div>
   );
 }
-

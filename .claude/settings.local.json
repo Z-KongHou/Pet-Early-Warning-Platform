@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm -v)",
+      "Bash(mysql *)",
+      "Bash(npm *)",
+      "Bash(npx pnpm *)",
+      "Bash(sc query *)",
+      "Bash(net start *)",
+      "Bash(mvn spring-boot:run)",
+      "Bash(curl -s http://127.0.0.1:8081/api/health)",
+      "Bash(curl *)",
+      "Bash(node *)",
+      "Bash(python *)",
+      "Bash(pip install *)",
+      "Bash(where mysql *)",
+      "Read(//c/Program Files/MySQL/MySQL Server 8.0/bin/**)",
+      "Read(//c/ProgramData/MySQL/MySQL Server 8.0/bin/**)",
+      "Bash(C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe *)",
+      "Bash(mvn compile *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import com.hamster.yingshi.dto.CameraRequest;
 import com.hamster.yingshi.dto.CameraTokenRequest;
 import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.service.CameraService;
+import com.hamster.yingshi.service.EzvizService;
 import com.hamster.yingshi.service.UserCameraService;
 import com.hamster.yingshi.utils.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,9 @@ public class CameraController {
 
     @Autowired
     private SecurityUtils securityUtils;
+
+    @Autowired
+    private EzvizService ezvizService;
 
     @PostMapping
     public Result<Camera> create(@RequestBody CameraRequest request) {
@@ -96,8 +100,11 @@ public class CameraController {
     public Result<Map<String, String>> getStream(@PathVariable Integer id) {
         Integer userId = securityUtils.getCurrentUserId();
         cameraService.checkAccess(userId, id);
+        Camera camera = cameraService.findById(id);
+        String streamUrl = ezvizService.getLiveStreamUrlWithRetry(camera);
         Map<String, String> data = new java.util.HashMap<>();
-        data.put("streamUrl", "rtsp://placeholder-stream-url");
+        data.put("streamUrl", streamUrl);
+        data.put("protocol", streamUrl.contains("rtmp") ? "rtmp" : "hls");
         return Result.success(data);
     }
 

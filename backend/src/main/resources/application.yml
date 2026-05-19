@@ -8,7 +8,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/yingshi_database?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
-    password: 23050929
+    password: Gyp20051215
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
@@ -25,6 +25,10 @@ mybatis-plus:
 jwt:
   secret: HamsterAIoT2026SecretKeyForJWTTokenGeneration
   expiration: 86400000
+
+ezviz:
+  app-key: ef6f78de7878472d924ed3e2347c66ec
+  app-secret: 13e02bd12ac38cd466e2b51556700356
 
 ai:
   model: glm-4-flash
