@@ -18,7 +18,13 @@
       "Read(//c/ProgramData/MySQL/MySQL Server 8.0/bin/**)",
       "Bash(C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe *)",
       "Bash(mvn compile *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill *)",
+      "WebSearch",
+      "WebFetch(domain:open.ys7.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(xxd)"
     ]
   }
 }

@@ -14,9 +14,8 @@ export default function CamerasPage() {
   const [create, setCreate] = useState({ hamsterId: "1", name: "", deviceKey: "", channelNo: "1" });
 
   // 视频播放状态
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [streamProtocol, setStreamProtocol] = useState<string | null>(null);
-  const [streamCameraName, setStreamCameraName] = useState<string>("");
+  const [activeCamera, setActiveCamera] = useState<Camera | null>(null);
+  const [streamInfo, setStreamInfo] = useState<{ accessToken: string; deviceKey: string; channelNo: number } | null>(null);
   const [streamErr, setStreamErr] = useState<string | null>(null);
   const [streamLoading, setStreamLoading] = useState(false);
 
@@ -32,15 +31,18 @@ export default function CamerasPage() {
   const openStream = useCallback(async (camera: Camera) => {
     setStreamErr(null);
     setStreamLoading(true);
-    setStreamUrl(null);
-    setStreamCameraName(camera.name);
+    setStreamInfo(null);
+    setActiveCamera(camera);
     try {
-      const res = await apiFetch<{ streamUrl: string; protocol: string }>(
+      const res = await apiFetch<{ accessToken: string; deviceKey: string; channelNo: string }>(
         `/api/cameras/${camera.id}/stream`,
         { headers: authHeaders() }
       );
-      setStreamUrl(res.streamUrl);
-      setStreamProtocol(res.protocol);
+      setStreamInfo({
+        accessToken: res.accessToken,
+        deviceKey: res.deviceKey,
+        channelNo: Number(res.channelNo),
+      });
     } catch (e) {
       setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取视频流失败");
     } finally {
@@ -49,10 +51,9 @@ export default function CamerasPage() {
   }, []);
 
   const closeStream = useCallback(() => {
-    setStreamUrl(null);
-    setStreamProtocol(null);
+    setActiveCamera(null);
+    setStreamInfo(null);
     setStreamErr(null);
-    setStreamCameraName("");
   }, []);
 
   return (
@@ -142,11 +143,11 @@ export default function CamerasPage() {
       </div>
 
       {/* 实时视频播放区 */}
-      {(streamUrl || streamErr || streamLoading) && (
+      {activeCamera !== null && (
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-medium">
-              {streamLoading ? "正在连接..." : `实时画面 — ${streamCameraName}`}
+              {streamLoading ? "正在连接..." : `实时画面 — ${activeCamera.name}`}
             </div>
             <button
               className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
@@ -165,12 +166,13 @@ export default function CamerasPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              正在获取视频流地址...
+              正在获取视频流...
             </div>
-          ) : streamUrl ? (
+          ) : streamInfo ? (
             <VideoPlayer
-              streamUrl={streamUrl}
-              protocol={streamProtocol ?? undefined}
+              deviceKey={streamInfo.deviceKey}
+              channelNo={streamInfo.channelNo}
+              accessToken={streamInfo.accessToken}
               onError={setStreamErr}
             />
           ) : null}

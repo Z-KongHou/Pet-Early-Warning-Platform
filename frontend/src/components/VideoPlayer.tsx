@@ -1,66 +1,70 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import Hls from "hls.js";
 
 interface VideoPlayerProps {
-  streamUrl: string;
-  protocol?: string;
+  deviceKey: string;
+  channelNo: number;
+  accessToken: string;
   onError?: (msg: string) => void;
 }
 
-export function VideoPlayer({ streamUrl, protocol, onError }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+export function VideoPlayer({ deviceKey, channelNo, accessToken, onError }: VideoPlayerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<any>(null);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !streamUrl) return;
+    const container = containerRef.current;
+    if (!container || !deviceKey || !accessToken) return;
 
-    let hls: Hls | null = null;
+    let cancelled = false;
 
-    if (protocol === "rtmp") {
-      onError?.("RTMP 协议无法在浏览器中直接播放，请使用 HLS 流");
-      return;
+    async function initPlayer() {
+      try {
+        const { default: EZUIKit } = await import("ezuikit-js");
+
+        if (cancelled || !container) return;
+
+        const divId = `ezuikit-${deviceKey}-${channelNo}`;
+        container.innerHTML = `<div id="${divId}" style="width:100%;height:480px;"></div>`;
+
+        const ezopenUrl = `ezopen://open.ys7.com/${deviceKey}/${channelNo}.hd.live`;
+
+        const player = new EZUIKit.EZUIKitPlayer({
+          id: divId,
+          url: ezopenUrl,
+          accessToken: accessToken,
+          decoderPath: "/PlayCtrlWasm",
+          width: 800,
+          height: 450,
+          handleError: (err: any) => {
+            console.error("EZUIKit error:", err);
+            onError?.(`播放错误: ${JSON.stringify(err)}`);
+          },
+        });
+
+        playerRef.current = player;
+      } catch (e) {
+        console.error("Failed to init EZUIKit:", e);
+        onError?.(`初始化播放器失败: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
-    if (Hls.isSupported()) {
-      hls = new Hls({
-        maxBufferLength: 10,
-        maxMaxBufferLength: 30,
-        liveSyncDurationCount: 3,
-      });
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          onError?.(`播放错误: ${data.type} - ${data.details}`);
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            hls?.startLoad();
-          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            hls?.recoverMediaError();
-          }
-        }
-      });
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = streamUrl;
-    } else {
-      onError?.("当前浏览器不支持 HLS 播放");
-    }
+    initPlayer();
 
     return () => {
-      hls?.destroy();
+      cancelled = true;
+      if (playerRef.current) {
+        try {
+          playerRef.current.stop && playerRef.current.stop();
+        } catch {}
+        playerRef.current = null;
+      }
+      if (container) {
+        container.innerHTML = "";
+      }
     };
-  }, [streamUrl, protocol, onError]);
+  }, [deviceKey, channelNo, accessToken, onError]);
 
-  return (
-    <video
-      ref={videoRef}
-      controls
-      autoPlay
-      muted
-      playsInline
-      className="w-full rounded-lg bg-black"
-      style={{ maxHeight: "480px" }}
-    />
-  );
+  return <div ref={containerRef} className="w-full rounded-lg overflow-hidden bg-black" />;
 }

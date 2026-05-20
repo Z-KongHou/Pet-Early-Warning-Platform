@@ -4,7 +4,7 @@ import lombok.Data;
 
 @Data
 public class EzvizTokenResponse {
-    private Integer code;
+    private String code;
     private String msg;
     private TokenData data;
 

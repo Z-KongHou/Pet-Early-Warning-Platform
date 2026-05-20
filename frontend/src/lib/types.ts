@@ -39,6 +39,7 @@ export type Camera = {
   channelNo: number;
   onlineStatus: 0 | 1;
   lastOnlineTime?: string;
+  accessToken?: string;
 };
 
 export type UserCameraBinding = {

@@ -8,6 +8,8 @@ import com.hamster.yingshi.dto.ezviz.EzvizTokenResponse;
 import com.hamster.yingshi.dto.ezviz.EzvizLiveResponse;
 import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.mapper.CameraMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -21,8 +23,10 @@ import java.time.ZoneId;
 @Service
 public class EzvizService {
 
+    private static final Logger log = LoggerFactory.getLogger(EzvizService.class);
+
     private static final String TOKEN_URL = "https://open.ys7.com/api/lapp/token/get";
-    private static final String LIVE_URL = "https://open.ys7.com/api/lapp/live/address/get";
+    private static final String LIVE_URL = "https://open.ys7.com/api/lapp/v2/live/address/get";
 
     @Autowired
     private EzvizProperties ezvizProperties;
@@ -96,7 +100,7 @@ public class EzvizService {
         try {
             EzvizTokenResponse tokenResp = objectMapper.readValue(
                     response.getBody(), EzvizTokenResponse.class);
-            if (tokenResp.getCode() != 200) {
+            if (!"200".equals(tokenResp.getCode())) {
                 throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
                         "获取萤石Token失败: " + tokenResp.getMsg());
             }
@@ -115,36 +119,44 @@ public class EzvizService {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
+        int ch = channelNo != null ? channelNo : 1;
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("accessToken", accessToken);
         body.add("deviceSerial", deviceSerial);
-        body.add("channelNo", String.valueOf(channelNo != null ? channelNo : 1));
+        body.add("channelNo", String.valueOf(ch));
+        body.add("protocol", "4"); // 4=flv
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("萤石v2直播API请求: deviceSerial={}, channelNo={}", deviceSerial, ch);
         ResponseEntity<String> response = restTemplate.exchange(
                 LIVE_URL, HttpMethod.POST, request, String.class);
+
+        log.info("萤石v2直播API响应: {}", response.getBody());
 
         try {
             EzvizLiveResponse liveResp = objectMapper.readValue(
                     response.getBody(), EzvizLiveResponse.class);
 
-            if (liveResp.getCode() == 200 && liveResp.getData() != null) {
+            if ("200".equals(liveResp.getCode()) && liveResp.getData() != null) {
                 String url = liveResp.getData().getUrl();
-                if (url == null || url.isEmpty()) {
-                    url = liveResp.getData().getRtmpUrl();
+                if (url != null && !url.isEmpty()) {
+                    log.info("获取直播地址成功, expireTime={}", liveResp.getData().getExpireTime());
+                    return url;
                 }
-                return url;
+                throw new BusinessException(ErrorCode.EZVIZ_API_ERROR, "萤石未返回有效的直播地址");
             }
 
-            if (liveResp.getCode() == 10002) {
+            log.warn("萤石v2直播API错误: code={}, msg={}", liveResp.getCode(), liveResp.getMsg());
+
+            if ("10002".equals(liveResp.getCode())) {
                 throw new BusinessException(ErrorCode.CAMERA_OFFLINE, "摄像头不在线");
             }
-            if (liveResp.getCode() == 10001 || liveResp.getCode() == 10004) {
+            if ("10001".equals(liveResp.getCode()) || "10004".equals(liveResp.getCode())) {
                 throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "萤石Token已过期，请重试");
             }
 
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                    "获取直播地址失败: " + liveResp.getMsg());
+                    "获取直播地址失败(code=" + liveResp.getCode() + "): " + liveResp.getMsg());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
