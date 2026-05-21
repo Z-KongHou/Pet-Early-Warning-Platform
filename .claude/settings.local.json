@@ -24,7 +24,13 @@
       "WebSearch",
       "WebFetch(domain:open.ys7.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(xxd)"
+      "Bash(xxd)",
+      "Bash(ls -la src/main/java)",
+      "Bash(dir src\\\\main\\\\java)",
+      "Bash(./mvnw spring-boot:run)",
+      "Bash(Start-Sleep -Seconds 8)",
+      "Bash(Get-Content \"C:\\\\Users\\\\GUYUNP~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D---temp-files---------2-yingshi\\\\c3d3be3f-ff15-43b0-9661-5a09bd103cf1\\\\tasks\\\\b4azix4gi.output\" -Tail 30)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

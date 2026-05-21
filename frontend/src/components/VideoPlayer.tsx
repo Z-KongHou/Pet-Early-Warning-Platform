@@ -6,10 +6,13 @@ interface VideoPlayerProps {
   deviceKey: string;
   channelNo: number;
   accessToken: string;
+  mode?: "live" | "playback";
+  startTime?: string;
+  endTime?: string;
   onError?: (msg: string) => void;
 }
 
-export function VideoPlayer({ deviceKey, channelNo, accessToken, onError }: VideoPlayerProps) {
+export function VideoPlayer({ deviceKey, channelNo, accessToken, mode = "live", startTime, endTime, onError }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
@@ -21,20 +24,22 @@ export function VideoPlayer({ deviceKey, channelNo, accessToken, onError }: Vide
 
     async function initPlayer() {
       try {
-        const { default: EZUIKit } = await import("ezuikit-js");
+        const mod = await import("ezuikit-js");
+        const EZUIKitPlayer = mod.EZUIKitPlayer || mod.default?.EZUIKitPlayer || mod.default;
 
         if (cancelled || !container) return;
 
         const divId = `ezuikit-${deviceKey}-${channelNo}`;
         container.innerHTML = `<div id="${divId}" style="width:100%;height:480px;"></div>`;
 
-        const ezopenUrl = `ezopen://open.ys7.com/${deviceKey}/${channelNo}.hd.live`;
+        const ezopenUrl = mode === "playback"
+          ? `ezopen://open.ys7.com/${deviceKey}/${channelNo}.cloud.rec?begin=${startTime}&end=${endTime}`
+          : `ezopen://open.ys7.com/${deviceKey}/${channelNo}.live`;
 
-        const player = new EZUIKit.EZUIKitPlayer({
+        const player = new EZUIKitPlayer({
           id: divId,
           url: ezopenUrl,
           accessToken: accessToken,
-          decoderPath: "/PlayCtrlWasm",
           width: 800,
           height: 450,
           handleError: (err: any) => {
@@ -64,7 +69,7 @@ export function VideoPlayer({ deviceKey, channelNo, accessToken, onError }: Vide
         container.innerHTML = "";
       }
     };
-  }, [deviceKey, channelNo, accessToken, onError]);
+  }, [deviceKey, channelNo, accessToken, mode, startTime, endTime, onError]);
 
   return <div ref={containerRef} className="w-full rounded-lg overflow-hidden bg-black" />;
 }

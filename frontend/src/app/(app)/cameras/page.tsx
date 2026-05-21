@@ -18,6 +18,9 @@ export default function CamerasPage() {
   const [streamInfo, setStreamInfo] = useState<{ accessToken: string; deviceKey: string; channelNo: number } | null>(null);
   const [streamErr, setStreamErr] = useState<string | null>(null);
   const [streamLoading, setStreamLoading] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState(false);
+  const [playbackStart, setPlaybackStart] = useState("");
+  const [playbackEnd, setPlaybackEnd] = useState("");
 
   useEffect(() => {
     refresh().catch((e) => setErr(e instanceof Error ? e.message : "加载失败"));
@@ -33,6 +36,37 @@ export default function CamerasPage() {
     setStreamLoading(true);
     setStreamInfo(null);
     setActiveCamera(camera);
+    setPlaybackMode(false);
+    try {
+      const res = await apiFetch<{ accessToken: string; deviceKey: string; channelNo: string }>(
+        `/api/cameras/${camera.id}/stream`,
+        { headers: authHeaders() }
+      );
+      setStreamInfo({
+        accessToken: res.accessToken,
+        deviceKey: res.deviceKey,
+        channelNo: Number(res.channelNo),
+      });
+    } catch (e) {
+      setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取视频流失败");
+    } finally {
+      setStreamLoading(false);
+    }
+  }, []);
+
+  const openPlayback = useCallback(async (camera: Camera) => {
+    setStreamErr(null);
+    setStreamLoading(true);
+    setStreamInfo(null);
+    setActiveCamera(camera);
+    setPlaybackMode(true);
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const today = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const end = `${today}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const start = `${today}000000`;
+    setPlaybackStart(start);
+    setPlaybackEnd(end);
     try {
       const res = await apiFetch<{ accessToken: string; deviceKey: string; channelNo: string }>(
         `/api/cameras/${camera.id}/stream`,
@@ -54,6 +88,9 @@ export default function CamerasPage() {
     setActiveCamera(null);
     setStreamInfo(null);
     setStreamErr(null);
+    setPlaybackMode(false);
+    setPlaybackStart("");
+    setPlaybackEnd("");
   }, []);
 
   return (
@@ -61,7 +98,7 @@ export default function CamerasPage() {
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold">摄像头</h1>
-          <p className="text-sm text-zinc-500">可新增、更新、删除，并查看实时视频画面</p>
+          <p className="text-sm text-zinc-500">可新增、更新、删除，查看实时视频画面与录像回放</p>
         </div>
         <RefreshButton onRefresh={refresh} />
       </div>
@@ -147,7 +184,7 @@ export default function CamerasPage() {
         <div className="rounded-xl border border-zinc-200 bg-white p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-medium">
-              {streamLoading ? "正在连接..." : `实时画面 — ${activeCamera.name}`}
+              {streamLoading ? "正在连接..." : `${playbackMode ? "录像回放" : "实时画面"} — ${activeCamera.name}`}
             </div>
             <button
               className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
@@ -173,6 +210,9 @@ export default function CamerasPage() {
               deviceKey={streamInfo.deviceKey}
               channelNo={streamInfo.channelNo}
               accessToken={streamInfo.accessToken}
+              mode={playbackMode ? "playback" : "live"}
+              startTime={playbackStart || undefined}
+              endTime={playbackEnd || undefined}
               onError={setStreamErr}
             />
           ) : null}
@@ -207,6 +247,12 @@ export default function CamerasPage() {
                       onClick={() => openStream(c)}
                     >
                       查看实时画面
+                    </button>
+                    <button
+                      className="rounded-md border border-emerald-200 text-emerald-700 px-2 py-1 text-xs hover:bg-emerald-50"
+                      onClick={() => openPlayback(c)}
+                    >
+                      录像回放
                     </button>
                     <button
                       className="rounded-md border border-red-200 text-red-700 px-2 py-1 text-xs hover:bg-red-50"
