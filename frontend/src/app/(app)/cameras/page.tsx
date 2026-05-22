@@ -92,14 +92,26 @@ export default function CamerasPage() {
     await fetchRecordings(camera.id, selectedDate);
   }, [selectedDate, fetchRecordings]);
 
-  const playRecording = useCallback((camera: Camera, fileName: string) => {
+  const playRecording = useCallback(async (camera: Camera, fileName: string) => {
     setStreamErr(null);
     setStreamInfo(null);
-    setStreamLoading(false);
-    // 构建本地录像播放URL
-    const url = `/api/cameras/${camera.id}/recordings/local/play?date=${encodeURIComponent(selectedDate)}&file=${encodeURIComponent(fileName)}`;
-    setLocalVideoUrl(url);
-  }, [selectedDate]);
+    setStreamLoading(true);
+    if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
+    setLocalVideoUrl(null);
+    try {
+      const url = `/api/cameras/${camera.id}/recordings/local/play?date=${encodeURIComponent(selectedDate)}&file=${encodeURIComponent(fileName)}`;
+      const res = await fetch(url, { headers: authHeaders() });
+      if (!res.ok) {
+        throw new Error(`加载视频失败 (${res.status})`);
+      }
+      const blob = await res.blob();
+      setLocalVideoUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      setStreamErr(e instanceof Error ? e.message : "视频加载失败");
+    } finally {
+      setStreamLoading(false);
+    }
+  }, [selectedDate, localVideoUrl]);
 
   const closeStream = useCallback(() => {
     setActiveCamera(null);
@@ -109,8 +121,9 @@ export default function CamerasPage() {
     setPlaybackStart("");
     setPlaybackEnd("");
     setRecordings([]);
+    if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
     setLocalVideoUrl(null);
-  }, []);
+  }, [localVideoUrl]);
 
   return (
     <div className="space-y-4">
@@ -294,7 +307,10 @@ export default function CamerasPage() {
               <div className="flex justify-start">
                 <button
                   className="rounded-md border border-zinc-200 px-3 py-1 text-xs hover:bg-zinc-50"
-                  onClick={() => setLocalVideoUrl(null)}
+                  onClick={() => {
+                    if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
+                    setLocalVideoUrl(null);
+                  }}
                 >
                   返回录像列表
                 </button>
