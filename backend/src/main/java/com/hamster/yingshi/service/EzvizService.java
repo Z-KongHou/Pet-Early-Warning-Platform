@@ -6,6 +6,7 @@ import com.hamster.yingshi.common.ErrorCode;
 import com.hamster.yingshi.config.EzvizProperties;
 import com.hamster.yingshi.dto.ezviz.EzvizTokenResponse;
 import com.hamster.yingshi.dto.ezviz.EzvizLiveResponse;
+import com.hamster.yingshi.dto.ezviz.EzvizCloudVideoListResponse;
 import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.mapper.CameraMapper;
 import org.slf4j.Logger;
@@ -19,6 +20,10 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class EzvizService {
@@ -27,6 +32,7 @@ public class EzvizService {
 
     private static final String TOKEN_URL = "https://open.ys7.com/api/lapp/token/get";
     private static final String LIVE_URL = "https://open.ys7.com/api/lapp/v2/live/address/get";
+    private static final String CLOUD_VIDEO_LIST_URL = "https://open.ys7.com/api/lapp/cloud/video/list";
 
     @Autowired
     private EzvizProperties ezvizProperties;
@@ -60,6 +66,63 @@ public class EzvizService {
     public String getLiveStreamUrl(Camera camera) {
         String accessToken = ensureAccessToken(camera);
         return fetchLiveUrl(accessToken, camera.getDeviceKey(), camera.getChannelNo());
+    }
+
+    public List<Map<String, String>> getCloudRecordings(Camera camera, String startTime, String endTime) {
+        String accessToken = ensureAccessToken(camera);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        int ch = camera.getChannelNo() != null ? camera.getChannelNo() : 1;
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", accessToken);
+        body.add("deviceSerial", camera.getDeviceKey());
+        body.add("channelNo", String.valueOf(ch));
+        body.add("startTime", startTime);
+        body.add("endTime", endTime);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("萤石云录像列表请求: deviceSerial={}, channelNo={}, startTime={}, endTime={}",
+                camera.getDeviceKey(), ch, startTime, endTime);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                CLOUD_VIDEO_LIST_URL, HttpMethod.POST, request, String.class);
+        log.info("萤石云录像列表响应: {}", response.getBody());
+
+        try {
+            EzvizCloudVideoListResponse resp = objectMapper.readValue(
+                    response.getBody(), EzvizCloudVideoListResponse.class);
+
+            if ("200".equals(resp.getCode()) && resp.getData() != null && resp.getData().getList() != null) {
+                List<Map<String, String>> result = new ArrayList<>();
+                for (EzvizCloudVideoListResponse.VideoClip clip : resp.getData().getList()) {
+                    Map<String, String> item = new HashMap<>();
+                    item.put("startTime", clip.getStartTime());
+                    item.put("endTime", clip.getEndTime());
+                    item.put("fileSize", clip.getFileSize() != null ? String.valueOf(clip.getFileSize()) : "0");
+                    item.put("recType", clip.getRecType() != null ? String.valueOf(clip.getRecType()) : "0");
+                    if (clip.getThumbnail() != null) {
+                        item.put("thumbnail", clip.getThumbnail());
+                    }
+                    result.add(item);
+                }
+                log.info("获取云录像列表成功, 共{}条", result.size());
+                return result;
+            }
+
+            log.warn("萤石云录像列表错误: code={}, msg={}", resp.getCode(), resp.getMsg());
+            if ("10001".equals(resp.getCode()) || "10004".equals(resp.getCode())) {
+                throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "萤石Token已过期，请重试");
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "获取云录像列表失败(code=" + resp.getCode() + "): " + resp.getMsg());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "解析萤石云录像列表响应失败: " + e.getMessage());
+        }
     }
 
     private String ensureAccessToken(Camera camera) {

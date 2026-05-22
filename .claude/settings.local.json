@@ -30,7 +30,25 @@
       "Bash(./mvnw spring-boot:run)",
       "Bash(Start-Sleep -Seconds 8)",
       "Bash(Get-Content \"C:\\\\Users\\\\GUYUNP~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D---temp-files---------2-yingshi\\\\c3d3be3f-ff15-43b0-9661-5a09bd103cf1\\\\tasks\\\\b4azix4gi.output\" -Tail 30)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(tasklist)",
+      "Bash(findstr /i java)",
+      "Bash(wmic process *)",
+      "Bash(findstr /i yingshi)",
+      "Bash(findstr \"8081\")",
+      "Bash(mvn clean *)",
+      "Bash(findstr \"8081.*LISTENING\")",
+      "Bash(javap -p \"D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\target\\\\classes\\\\com\\\\hamster\\\\yingshi\\\\controller\\\\CameraController.class\")",
+      "Bash(pnpm dev *)",
+      "Bash(where pnpm *)",
+      "Bash(npx next *)",
+      "Bash(findstr \"3000.*LISTENING\")",
+      "Bash(where ffmpeg *)",
+      "Bash(findstr \"ffmpeg\")",
+      "Bash(findstr \"node\")",
+      "Bash(awk '{print $5}')",
+      "Bash(bc)",
+      "Bash(ffmpeg -version)"
     ]
   }
 }

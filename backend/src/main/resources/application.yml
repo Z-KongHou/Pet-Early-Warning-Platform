@@ -35,3 +35,9 @@ ai:
   api-url: https://open.bigmodel.cn/api/paas/v4/chat/completions
   api-key: d175f7c031b34c869c2e2d454fcf7b90.uELNrBuyS0jiy3ys
   timeout: 30000
+
+recording:
+  enabled: true
+  duration-seconds: 60
+  storage-path: ./video
+  ffmpeg-path: ffmpeg

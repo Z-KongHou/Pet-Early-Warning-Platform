@@ -104,6 +104,13 @@ public class CameraService {
         cameraMapper.updateById(camera);
     }
 
+    public List<Camera> findAll() {
+        return cameraMapper.selectList(
+            new LambdaQueryWrapper<Camera>()
+                .eq(Camera::getIsDeleted, 0)
+        );
+    }
+
     public boolean hasAccess(Integer userId, Integer cameraId) {
         return userCameraMapper.selectCount(
             new LambdaQueryWrapper<UserCamera>()

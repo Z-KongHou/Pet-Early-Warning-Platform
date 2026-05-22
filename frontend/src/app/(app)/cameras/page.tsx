@@ -22,6 +22,17 @@ export default function CamerasPage() {
   const [playbackStart, setPlaybackStart] = useState("");
   const [playbackEnd, setPlaybackEnd] = useState("");
 
+  // 录像列表状态
+  const [recordings, setRecordings] = useState<{ startTime: string; endTime: string; fileName: string; fileSize: string }[]>([]);
+  const [recordingsLoading, setRecordingsLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  });
+  // 本地录像播放URL
+  const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
+
   useEffect(() => {
     refresh().catch((e) => setErr(e instanceof Error ? e.message : "加载失败"));
   }, []);
@@ -54,35 +65,41 @@ export default function CamerasPage() {
     }
   }, []);
 
+  const fetchRecordings = useCallback(async (cameraId: number, date: string) => {
+    setRecordingsLoading(true);
+    setRecordings([]);
+    setLocalVideoUrl(null);
+    try {
+      const res = await apiFetch<{ startTime: string; endTime: string; fileName: string; fileSize: string }[]>(
+        `/api/cameras/${cameraId}/recordings/local?date=${encodeURIComponent(date)}`,
+        { headers: authHeaders() }
+      );
+      setRecordings(res ?? []);
+    } catch (e) {
+      setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取录像列表失败");
+    } finally {
+      setRecordingsLoading(false);
+    }
+  }, []);
+
   const openPlayback = useCallback(async (camera: Camera) => {
     setStreamErr(null);
-    setStreamLoading(true);
     setStreamInfo(null);
     setActiveCamera(camera);
     setPlaybackMode(true);
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const today = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
-    const end = `${today}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const start = `${today}000000`;
-    setPlaybackStart(start);
-    setPlaybackEnd(end);
-    try {
-      const res = await apiFetch<{ accessToken: string; deviceKey: string; channelNo: string }>(
-        `/api/cameras/${camera.id}/stream`,
-        { headers: authHeaders() }
-      );
-      setStreamInfo({
-        accessToken: res.accessToken,
-        deviceKey: res.deviceKey,
-        channelNo: Number(res.channelNo),
-      });
-    } catch (e) {
-      setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取视频流失败");
-    } finally {
-      setStreamLoading(false);
-    }
-  }, []);
+    setPlaybackStart("");
+    setPlaybackEnd("");
+    await fetchRecordings(camera.id, selectedDate);
+  }, [selectedDate, fetchRecordings]);
+
+  const playRecording = useCallback((camera: Camera, fileName: string) => {
+    setStreamErr(null);
+    setStreamInfo(null);
+    setStreamLoading(false);
+    // 构建本地录像播放URL
+    const url = `/api/cameras/${camera.id}/recordings/local/play?date=${encodeURIComponent(selectedDate)}&file=${encodeURIComponent(fileName)}`;
+    setLocalVideoUrl(url);
+  }, [selectedDate]);
 
   const closeStream = useCallback(() => {
     setActiveCamera(null);
@@ -91,6 +108,8 @@ export default function CamerasPage() {
     setPlaybackMode(false);
     setPlaybackStart("");
     setPlaybackEnd("");
+    setRecordings([]);
+    setLocalVideoUrl(null);
   }, []);
 
   return (
@@ -193,6 +212,71 @@ export default function CamerasPage() {
               关闭
             </button>
           </div>
+
+          {/* 录像回放：日期选择 + 录像列表 */}
+          {playbackMode && !localVideoUrl && (
+            <div className="mb-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-zinc-600">选择日期：</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    if (activeCamera) fetchRecordings(activeCamera.id, e.target.value);
+                  }}
+                  className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm"
+                />
+              </div>
+
+              {recordingsLoading ? (
+                <div className="flex items-center justify-center h-32 text-sm text-zinc-500">
+                  <svg className="animate-spin h-5 w-5 mr-2 text-zinc-400" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  正在查询录像列表...
+                </div>
+              ) : recordings.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto rounded-md border border-zinc-100">
+                  <table className="w-full text-xs">
+                    <thead className="bg-zinc-50 text-zinc-500 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left">序号</th>
+                        <th className="px-3 py-1.5 text-left">开始时间</th>
+                        <th className="px-3 py-1.5 text-left">结束时间</th>
+                        <th className="px-3 py-1.5 text-left">大小</th>
+                        <th className="px-3 py-1.5 text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recordings.map((r, i) => (
+                        <tr key={i} className="border-t border-zinc-50 hover:bg-zinc-50">
+                          <td className="px-3 py-1.5">{i + 1}</td>
+                          <td className="px-3 py-1.5 font-mono">{r.startTime}</td>
+                          <td className="px-3 py-1.5 font-mono">{r.endTime}</td>
+                          <td className="px-3 py-1.5">{(Number(r.fileSize) / 1024 / 1024).toFixed(1)} MB</td>
+                          <td className="px-3 py-1.5 text-right">
+                            <button
+                              className="rounded-md border border-emerald-200 text-emerald-700 px-2 py-0.5 text-xs hover:bg-emerald-50"
+                              onClick={() => playRecording(activeCamera, r.fileName)}
+                            >
+                              播放
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center text-sm text-zinc-400 py-8">
+                  该日期暂无录像记录
+                </div>
+              )}
+            </div>
+          )}
+
           {streamErr ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {streamErr}
@@ -204,6 +288,29 @@ export default function CamerasPage() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
               正在获取视频流...
+            </div>
+          ) : localVideoUrl ? (
+            <div className="space-y-3">
+              <div className="flex justify-start">
+                <button
+                  className="rounded-md border border-zinc-200 px-3 py-1 text-xs hover:bg-zinc-50"
+                  onClick={() => setLocalVideoUrl(null)}
+                >
+                  返回录像列表
+                </button>
+              </div>
+              <div className="flex justify-center">
+                <video
+                  src={localVideoUrl}
+                  controls
+                  autoPlay
+                  className="rounded-lg max-w-full"
+                  style={{ maxHeight: 480 }}
+                  onError={() => setStreamErr("视频播放失败")}
+                >
+                  您的浏览器不支持视频播放
+                </video>
+              </div>
             </div>
           ) : streamInfo ? (
             <VideoPlayer

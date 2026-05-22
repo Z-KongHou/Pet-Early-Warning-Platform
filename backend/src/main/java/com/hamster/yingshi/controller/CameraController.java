@@ -8,6 +8,7 @@ import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.service.CameraService;
 import com.hamster.yingshi.service.EzvizService;
 import com.hamster.yingshi.service.UserCameraService;
+import com.hamster.yingshi.service.VideoRecordingService;
 import com.hamster.yingshi.utils.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
@@ -15,12 +16,15 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.File;
+import java.io.FileInputStream;
+
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
+import java.nio.file.Files;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -38,6 +42,9 @@ public class CameraController {
 
     @Autowired
     private EzvizService ezvizService;
+
+    @Autowired
+    private VideoRecordingService videoRecordingService;
 
     @PostMapping
     public Result<Camera> create(@RequestBody CameraRequest request) {
@@ -120,6 +127,18 @@ public class CameraController {
         data.put("deviceKey", camera.getDeviceKey());
         data.put("channelNo", String.valueOf(camera.getChannelNo() != null ? camera.getChannelNo() : 1));
         return Result.success(data);
+    }
+
+    @GetMapping("/{id}/recordings")
+    public Result<List<Map<String, String>>> getRecordings(
+            @PathVariable Integer id,
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
+        Integer userId = securityUtils.getCurrentUserId();
+        cameraService.checkAccess(userId, id);
+        Camera camera = cameraService.findById(id);
+        List<Map<String, String>> recordings = ezvizService.getCloudRecordings(camera, startTime, endTime);
+        return Result.success(recordings);
     }
 
     @GetMapping("/{id}/stream/proxy/**")
@@ -249,5 +268,58 @@ public class CameraController {
         data.put("cameraId", camera.getId());
         data.put("tokenExpires", camera.getTokenExpires());
         return Result.success(data);
+    }
+
+    @GetMapping("/{id}/recordings/local")
+    public Result<List<Map<String, String>>> getLocalRecordings(
+            @PathVariable Integer id,
+            @RequestParam String date) {
+        Integer userId = securityUtils.getCurrentUserId();
+        cameraService.checkAccess(userId, id);
+        File[] files = videoRecordingService.getRecordings(id, date);
+        List<Map<String, String>> result = new ArrayList<>();
+        for (File file : files) {
+            Map<String, String> item = new HashMap<>();
+            String fileName = file.getName();
+            // 文件名格式: HH-mm-ss-HH-mm-ss.mp4
+            String baseName = fileName.replace(".mp4", "");
+            String[] parts = baseName.split("-");
+            if (parts.length >= 6) {
+                item.put("startTime", parts[0] + ":" + parts[1] + ":" + parts[2]);
+                item.put("endTime", parts[3] + ":" + parts[4] + ":" + parts[5]);
+            }
+            item.put("fileName", fileName);
+            item.put("fileSize", String.valueOf(file.length()));
+            result.add(item);
+        }
+        // 按开始时间排序
+        result.sort((a, b) -> a.getOrDefault("startTime", "").compareTo(b.getOrDefault("startTime", "")));
+        return Result.success(result);
+    }
+
+    @GetMapping("/{id}/recordings/local/play")
+    public void playLocalRecording(
+            @PathVariable Integer id,
+            @RequestParam String date,
+            @RequestParam String file,
+            HttpServletResponse response) {
+        Integer userId = securityUtils.getCurrentUserId();
+        cameraService.checkAccess(userId, id);
+        File videoFile = videoRecordingService.getRecordingFile(id, date, file);
+        if (videoFile == null) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+        response.setContentType("video/mp4");
+        response.setHeader("Accept-Ranges", "bytes");
+        try (FileInputStream fis = new FileInputStream(videoFile);
+             OutputStream os = response.getOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = fis.read(buffer)) != -1) {
+                os.write(buffer, 0, len);
+            }
+        } catch (Exception ignored) {
+        }
     }
 }
