@@ -18,6 +18,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.RandomAccessFile;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -302,6 +303,7 @@ public class CameraController {
             @PathVariable Integer id,
             @RequestParam String date,
             @RequestParam String file,
+            HttpServletRequest request,
             HttpServletResponse response) {
         Integer userId = securityUtils.getCurrentUserId();
         cameraService.checkAccess(userId, id);
@@ -310,16 +312,52 @@ public class CameraController {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             return;
         }
+
+        long fileLength = videoFile.length();
         response.setContentType("video/mp4");
         response.setHeader("Accept-Ranges", "bytes");
-        try (FileInputStream fis = new FileInputStream(videoFile);
-             OutputStream os = response.getOutputStream()) {
-            byte[] buffer = new byte[8192];
-            int len;
-            while ((len = fis.read(buffer)) != -1) {
-                os.write(buffer, 0, len);
+        response.setHeader("Content-Disposition", "inline; filename=\"" + file + "\"");
+
+        // 处理 Range 请求（HTML5 video 需要）
+        String rangeHeader = request.getHeader("Range");
+        if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+            String rangeSpec = rangeHeader.substring(6);
+            String[] parts = rangeSpec.split("-");
+            long start = Long.parseLong(parts[0]);
+            long end = parts.length > 1 && !parts[1].isEmpty() ? Long.parseLong(parts[1]) : fileLength - 1;
+            if (end >= fileLength) end = fileLength - 1;
+            long contentLength = end - start + 1;
+
+            response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+            response.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
+            response.setHeader("Content-Length", String.valueOf(contentLength));
+
+            try (RandomAccessFile raf = new RandomAccessFile(videoFile, "r")) {
+                raf.seek(start);
+                byte[] buffer = new byte[8192];
+                long remaining = contentLength;
+                OutputStream os = response.getOutputStream();
+                while (remaining > 0) {
+                    int toRead = (int) Math.min(buffer.length, remaining);
+                    int read = raf.read(buffer, 0, toRead);
+                    if (read <= -1) break;
+                    os.write(buffer, 0, read);
+                    remaining -= read;
+                }
+            } catch (Exception ignored) {
             }
-        } catch (Exception ignored) {
+        } else {
+            // 无 Range 请求，返回完整文件
+            response.setHeader("Content-Length", String.valueOf(fileLength));
+            try (FileInputStream fis = new FileInputStream(videoFile);
+                 OutputStream os = response.getOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = fis.read(buffer)) != -1) {
+                    os.write(buffer, 0, len);
+                }
+            } catch (Exception ignored) {
+            }
         }
     }
 }

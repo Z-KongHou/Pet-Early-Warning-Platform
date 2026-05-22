@@ -96,14 +96,19 @@ public class VideoRecordingService {
         String fileName = startTimeStr + "-" + endTimeStr + ".mp4";
         File outputFile = new File(outputDir, fileName);
 
-        // 构建 FFmpeg 命令
+        // 构建 FFmpeg 命令（转码为标准 H.264，确保 MP4 兼容性）
         String ffmpegPath = recordingProperties.getFfmpegPath();
         ProcessBuilder pb = new ProcessBuilder(
                 ffmpegPath,
                 "-y",                          // 覆盖已有文件
+                "-fflags", "+genpts",           // 为直播流生成 PTS 时间戳
                 "-i", streamUrl,               // 输入流
                 "-t", String.valueOf(duration), // 录制时长(秒)
-                "-c", "copy",                  // 直接复制编码，不转码
+                "-c:v", "libx264",             // 转码为 H.264
+                "-preset", "ultrafast",         // 最快编码速度，降低 CPU 占用
+                "-crf", "28",                  // 画质(18-28为合理范围，28偏高压缩)
+                "-c:a", "aac",                 // 音频编码为 AAC
+                "-movflags", "+faststart",     // 将 moov atom 放到文件头部
                 "-f", "mp4",                   // 输出格式
                 outputFile.getAbsolutePath()
         );
@@ -114,17 +119,24 @@ public class VideoRecordingService {
             Process process = pb.start();
             activeRecordings.put(cameraId, process);
 
-            // 异步等待进程结束
+            // 异步读取 FFmpeg 输出并等待进程结束
             new Thread(() -> {
+                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        log.debug("[ffmpeg-{}] {}", cameraId, line);
+                    }
+                } catch (IOException ignored) {
+                }
                 try {
                     int exitCode = process.waitFor();
                     activeRecordings.remove(cameraId);
-                    if (exitCode == 0) {
-                        log.info("录制完成: {}", outputFile.getAbsolutePath());
+                    if (exitCode == 0 && outputFile.exists() && outputFile.length() > 0) {
+                        log.info("录制完成: {} ({}KB)", outputFile.getAbsolutePath(), outputFile.length() / 1024);
                     } else {
-                        log.warn("录制异常退出(exitCode={}): {}", exitCode, outputFile.getAbsolutePath());
-                        // 删除不完整的文件
-                        if (outputFile.exists()) {
+                        log.warn("录制异常退出(exitCode={}, fileSize={}): {}",
+                                exitCode, outputFile.length(), outputFile.getAbsolutePath());
+                        if (outputFile.exists() && outputFile.length() == 0) {
                             outputFile.delete();
                         }
                     }

@@ -48,7 +48,15 @@
       "Bash(findstr \"node\")",
       "Bash(awk '{print $5}')",
       "Bash(bc)",
-      "Bash(ffmpeg -version)"
+      "Bash(ffmpeg -version)",
+      "Bash(findstr /i \"java\")",
+      "Bash(ffprobe *)",
+      "Bash(ffplay -v error -t 1 -autoexit \"D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\video\\\\3\\\\2026-05-22\\\\22-14-44-22-15-44.mp4\")",
+      "Bash(ffmpeg -f lavfi -i testsrc=duration=3:size=320x240:rate=15 -c copy -f ts -y \"D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\video\\\\test.ts\")",
+      "Bash(ffmpeg -f lavfi -i testsrc=duration=3:size=320x240:rate=15 -c copy -f mpegts -y \"D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\video\\\\test.ts\")",
+      "Bash(ffmpeg -y -i 'https://rtmp09open.ys7.com:9188/v3/openlive/BK3777227_1_1.flv?expire=1779547621&id=978066484601180160&t=014f52980b79ef135a36dd436c084ab857e6ba8eff4bb50f6a45db1537e986a2&ev=101' -t 3 -c copy -f mpegts 'D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\video\\\\probe_test.ts')",
+      "Bash(cmd.exe /c \"wmic process where ProcessId=21536 get CommandLine /format:list\")",
+      "Bash(ffmpeg -y -i \"D:/.temp/files/大二下/创新实践2/yingshi/backend/video/3/2026-05-22/23-18-38-23-19-38.ts\" -c copy -movflags +faststart \"D:/.temp/files/大二下/创新实践2/yingshi/backend/video/3/2026-05-22/23-18-38-23-19-38.mp4\")"
     ]
   }
 }
