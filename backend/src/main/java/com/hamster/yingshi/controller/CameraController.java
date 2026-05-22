@@ -82,6 +82,7 @@ public class CameraController {
             item.put("deviceKey", c.getDeviceKey());
             item.put("onlineStatus", c.getOnlineStatus());
             item.put("lastOnlineTime", c.getLastOnlineTime());
+            item.put("recordingEnabled", c.getRecordingEnabled() != null && c.getRecordingEnabled() == 1);
             return item;
         }).collect(Collectors.toList());
         Map<String, Object> data = new java.util.HashMap<>();
@@ -293,8 +294,8 @@ public class CameraController {
             item.put("fileSize", String.valueOf(file.length()));
             result.add(item);
         }
-        // 按开始时间排序
-        result.sort((a, b) -> a.getOrDefault("startTime", "").compareTo(b.getOrDefault("startTime", "")));
+        // 按开始时间倒序排序
+        result.sort((a, b) -> b.getOrDefault("startTime", "").compareTo(a.getOrDefault("startTime", "")));
         return Result.success(result);
     }
 
@@ -359,5 +360,43 @@ public class CameraController {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    @DeleteMapping("/{id}/recordings/local")
+    public Result<Void> deleteLocalRecording(
+            @PathVariable Integer id,
+            @RequestParam String date,
+            @RequestParam String file) {
+        Integer userId = securityUtils.getCurrentUserId();
+        cameraService.checkAccess(userId, id);
+        boolean deleted = videoRecordingService.deleteRecording(id, date, file);
+        if (!deleted) {
+            throw new com.hamster.yingshi.common.BusinessException(
+                    com.hamster.yingshi.common.ErrorCode.FILE_NOT_FOUND, "录像文件不存在");
+        }
+        return Result.success();
+    }
+
+    @PostMapping("/{id}/recording/toggle")
+    public Result<Map<String, Object>> toggleCameraRecording(
+            @PathVariable Integer id,
+            @RequestBody Map<String, Boolean> body) {
+        Integer userId = securityUtils.getCurrentUserId();
+        cameraService.checkAccess(userId, id);
+        Boolean enabled = body.get("enabled");
+        if (enabled == null) {
+            throw new com.hamster.yingshi.common.BusinessException(
+                    com.hamster.yingshi.common.ErrorCode.PARAM_ERROR, "enabled 参数不能为空");
+        }
+        Camera camera = cameraService.findById(id);
+        camera.setRecordingEnabled(enabled ? 1 : 0);
+        cameraService.update(id, camera);
+        // 如果关闭录像，停止该摄像头正在录制的进程
+        if (!enabled) {
+            videoRecordingService.stopRecording(id);
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("enabled", enabled);
+        return Result.success(data);
     }
 }

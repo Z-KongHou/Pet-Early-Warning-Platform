@@ -83,6 +83,7 @@ public class CameraService {
         if (camera.getName() != null) existing.setName(camera.getName());
         if (camera.getChannelNo() != null) existing.setChannelNo(camera.getChannelNo());
         if (camera.getHamsterId() != null) existing.setHamsterId(camera.getHamsterId());
+        if (camera.getRecordingEnabled() != null) existing.setRecordingEnabled(camera.getRecordingEnabled());
         cameraMapper.updateById(existing);
         return existing;
     }

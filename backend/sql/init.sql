@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS `cameras` (
   `token_expires` DATETIME DEFAULT NULL COMMENT '令牌过期时间（UTC）',
   `last_online_time` DATETIME DEFAULT NULL COMMENT '最后在线时间（UTC）',
   `online_status` TINYINT DEFAULT 0 COMMENT '在线状态：0离线/1在线',
+  `recording_enabled` TINYINT DEFAULT 0 COMMENT '录像开关：0关闭/1开启',
   `is_deleted` TINYINT DEFAULT 0 COMMENT '软删除标记：0否/1是',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（UTC）',
   `updated_at` DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间（UTC）',

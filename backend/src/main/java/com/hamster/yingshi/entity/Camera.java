@@ -26,6 +26,8 @@ public class Camera {
 
     private Integer onlineStatus;
 
+    private Integer recordingEnabled;
+
     @TableField(select = false)
     private Integer isDeleted;
 

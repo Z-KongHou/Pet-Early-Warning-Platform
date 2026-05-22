@@ -56,7 +56,10 @@
       "Bash(ffmpeg -f lavfi -i testsrc=duration=3:size=320x240:rate=15 -c copy -f mpegts -y \"D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\video\\\\test.ts\")",
       "Bash(ffmpeg -y -i 'https://rtmp09open.ys7.com:9188/v3/openlive/BK3777227_1_1.flv?expire=1779547621&id=978066484601180160&t=014f52980b79ef135a36dd436c084ab857e6ba8eff4bb50f6a45db1537e986a2&ev=101' -t 3 -c copy -f mpegts 'D:\\\\.temp\\\\files\\\\大二下\\\\创新实践2\\\\yingshi\\\\backend\\\\video\\\\probe_test.ts')",
       "Bash(cmd.exe /c \"wmic process where ProcessId=21536 get CommandLine /format:list\")",
-      "Bash(ffmpeg -y -i \"D:/.temp/files/大二下/创新实践2/yingshi/backend/video/3/2026-05-22/23-18-38-23-19-38.ts\" -c copy -movflags +faststart \"D:/.temp/files/大二下/创新实践2/yingshi/backend/video/3/2026-05-22/23-18-38-23-19-38.mp4\")"
+      "Bash(ffmpeg -y -i \"D:/.temp/files/大二下/创新实践2/yingshi/backend/video/3/2026-05-22/23-18-38-23-19-38.ts\" -c copy -movflags +faststart \"D:/.temp/files/大二下/创新实践2/yingshi/backend/video/3/2026-05-22/23-18-38-23-19-38.mp4\")",
+      "Bash(java -cp \"target/classes;target/dependency/*\" -Dfile.encoding=UTF-8 com.hamster.yingshi.YingshiApplication)",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -pGyp20051215 yingshi_database -e \"ALTER TABLE cameras ADD COLUMN recording_enabled TINYINT DEFAULT 0 COMMENT '录像开关：0关闭/1开启';\" 2>&1)",
+      "PowerShell(& \"C:\\\\Program Files\\\\MySQL\\\\MySQL Server 8.0\\\\bin\\\\mysql.exe\" -u root -pGyp20051215 yingshi_database -e \"DESCRIBE cameras;\" 2>&1)"
     ]
   }
 }

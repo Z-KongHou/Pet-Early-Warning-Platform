@@ -40,6 +40,7 @@ export type Camera = {
   onlineStatus: 0 | 1;
   lastOnlineTime?: string;
   accessToken?: string;
+  recordingEnabled?: boolean;
 };
 
 export type UserCameraBinding = {

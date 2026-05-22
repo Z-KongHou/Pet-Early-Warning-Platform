@@ -38,6 +38,6 @@ ai:
 
 recording:
   enabled: true
-  duration-seconds: 60
+  duration-seconds: 300
   storage-path: ./video
   ffmpeg-path: ffmpeg

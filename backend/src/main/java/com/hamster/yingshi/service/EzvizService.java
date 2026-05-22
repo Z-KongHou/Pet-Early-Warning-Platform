@@ -33,6 +33,7 @@ public class EzvizService {
     private static final String TOKEN_URL = "https://open.ys7.com/api/lapp/token/get";
     private static final String LIVE_URL = "https://open.ys7.com/api/lapp/v2/live/address/get";
     private static final String CLOUD_VIDEO_LIST_URL = "https://open.ys7.com/api/lapp/cloud/video/list";
+    private static final String DEVICE_INFO_URL = "https://open.ys7.com/api/lapp/device/info";
 
     @Autowired
     private EzvizProperties ezvizProperties;
@@ -175,6 +176,47 @@ public class EzvizService {
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
                     "解析萤石Token响应失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询设备在线状态
+     * @return true=在线, false=离线
+     */
+    public boolean checkDeviceOnline(Camera camera) {
+        try {
+            String accessToken = ensureAccessToken(camera);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("accessToken", accessToken);
+            body.add("deviceSerial", camera.getDeviceKey());
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    DEVICE_INFO_URL, HttpMethod.POST, request, String.class);
+
+            // 解析响应
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
+            String code = root.path("code").asText();
+
+            if ("200".equals(code)) {
+                com.fasterxml.jackson.databind.JsonNode data = root.path("data");
+                if (data != null && !data.isNull()) {
+                    int status = data.path("status").asInt(0);
+                    // status: 1=在线, 2=离线
+                    return status == 1;
+                }
+            }
+
+            log.warn("查询设备在线状态失败: deviceKey={}, code={}, msg={}",
+                    camera.getDeviceKey(), code, root.path("msg").asText());
+            return false;
+        } catch (Exception e) {
+            log.error("查询设备在线状态异常: deviceKey={}, error={}", camera.getDeviceKey(), e.getMessage());
+            return false;
         }
     }
 

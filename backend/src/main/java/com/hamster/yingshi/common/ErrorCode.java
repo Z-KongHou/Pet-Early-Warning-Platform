@@ -14,5 +14,6 @@ public class ErrorCode {
     public static final Integer SETTING_NOT_FOUND = 40406;
     public static final Integer TOKEN_EXPIRED = 40102;
     public static final Integer CAMERA_OFFLINE = 40407;
+    public static final Integer FILE_NOT_FOUND = 40408;
     public static final Integer EZVIZ_API_ERROR = 50002;
 }
