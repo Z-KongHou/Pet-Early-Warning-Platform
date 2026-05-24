@@ -8,14 +8,13 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/yingshi_database?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
-    password: Gyp20051215
+    password: 23050929
 
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.hamster.yingshi.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   global-config:
     db-config:
       logic-delete-field: isDeleted

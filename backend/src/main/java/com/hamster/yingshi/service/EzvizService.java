@@ -84,12 +84,12 @@ public class EzvizService {
         body.add("endTime", endTime);
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
-        log.info("萤石云录像列表请求: deviceSerial={}, channelNo={}, startTime={}, endTime={}",
+        log.info("Ezviz cloud recording list request: deviceSerial={}, channelNo={}, startTime={}, endTime={}",
                 camera.getDeviceKey(), ch, startTime, endTime);
 
         ResponseEntity<String> response = restTemplate.exchange(
                 CLOUD_VIDEO_LIST_URL, HttpMethod.POST, request, String.class);
-        log.info("萤石云录像列表响应: {}", response.getBody());
+        log.info("Ezviz cloud recording list response: {}", response.getBody());
 
         try {
             EzvizCloudVideoListResponse resp = objectMapper.readValue(
@@ -108,11 +108,11 @@ public class EzvizService {
                     }
                     result.add(item);
                 }
-                log.info("获取云录像列表成功, 共{}条", result.size());
+                log.info("Cloud recording list fetched, count={}", result.size());
                 return result;
             }
 
-            log.warn("萤石云录像列表错误: code={}, msg={}", resp.getCode(), resp.getMsg());
+            log.warn("Ezviz cloud recording list error: code={}, msg={}", resp.getCode(), resp.getMsg());
             if ("10001".equals(resp.getCode()) || "10004".equals(resp.getCode())) {
                 throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "萤石Token已过期，请重试");
             }
@@ -211,11 +211,11 @@ public class EzvizService {
                 }
             }
 
-            log.warn("查询设备在线状态失败: deviceKey={}, code={}, msg={}",
+            log.warn("Failed to query device online status: deviceKey={}, code={}, msg={}",
                     camera.getDeviceKey(), code, root.path("msg").asText());
             return false;
         } catch (Exception e) {
-            log.error("查询设备在线状态异常: deviceKey={}, error={}", camera.getDeviceKey(), e.getMessage());
+            log.error("Device online status query failed: deviceKey={}, error={}", camera.getDeviceKey(), e.getMessage());
             return false;
         }
     }
@@ -232,11 +232,11 @@ public class EzvizService {
         body.add("protocol", "4"); // 4=flv
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
-        log.info("萤石v2直播API请求: deviceSerial={}, channelNo={}", deviceSerial, ch);
+        log.info("Ezviz v2 live API request: deviceSerial={}, channelNo={}", deviceSerial, ch);
         ResponseEntity<String> response = restTemplate.exchange(
                 LIVE_URL, HttpMethod.POST, request, String.class);
 
-        log.info("萤石v2直播API响应: {}", response.getBody());
+        log.info("Ezviz v2 live API response: {}", response.getBody());
 
         try {
             EzvizLiveResponse liveResp = objectMapper.readValue(
@@ -245,13 +245,13 @@ public class EzvizService {
             if ("200".equals(liveResp.getCode()) && liveResp.getData() != null) {
                 String url = liveResp.getData().getUrl();
                 if (url != null && !url.isEmpty()) {
-                    log.info("获取直播地址成功, expireTime={}", liveResp.getData().getExpireTime());
+                    log.info("Live stream URL fetched, expireTime={}", liveResp.getData().getExpireTime());
                     return url;
                 }
                 throw new BusinessException(ErrorCode.EZVIZ_API_ERROR, "萤石未返回有效的直播地址");
             }
 
-            log.warn("萤石v2直播API错误: code={}, msg={}", liveResp.getCode(), liveResp.getMsg());
+            log.warn("Ezviz v2 live API error: code={}, msg={}", liveResp.getCode(), liveResp.getMsg());
 
             if ("10002".equals(liveResp.getCode())) {
                 throw new BusinessException(ErrorCode.CAMERA_OFFLINE, "摄像头不在线");

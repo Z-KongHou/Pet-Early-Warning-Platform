@@ -40,6 +40,7 @@ export function VideoPlayer({ deviceKey, channelNo, accessToken, mode = "live", 
           id: divId,
           url: ezopenUrl,
           accessToken: accessToken,
+          template: "simple",
           width: 800,
           height: 450,
           handleError: (err: any) => {

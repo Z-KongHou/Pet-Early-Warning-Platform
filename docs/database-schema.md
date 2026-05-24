@@ -52,6 +52,7 @@
 | token_expires | DATETIME | 令牌过期时间（UTC） | |
 | last_online_time | DATETIME | 最后在线时间（UTC） | |
 | online_status | TINYINT | 在线状态：0离线/1在线 | DEFAULT 0 |
+| recording_enabled | TINYINT | 录像开关：0关闭/1开启 | DEFAULT 0 |
 | is_deleted | TINYINT | 软删除标记：0否/1是 | DEFAULT 0 |
 | created_at | DATETIME | 创建时间（UTC） | DEFAULT CURRENT_TIMESTAMP |
 | updated_at | DATETIME | 更新时间（UTC） | |

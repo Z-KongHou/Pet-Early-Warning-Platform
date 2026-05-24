@@ -61,7 +61,7 @@ public class VideoRecordingService {
         try {
             cameras = cameraService.findAll();
         } catch (Exception e) {
-            log.error("获取摄像头列表失败", e);
+            log.error("Failed to load camera list", e);
             return;
         }
 
@@ -69,7 +69,7 @@ public class VideoRecordingService {
             try {
                 recordCamera(camera);
             } catch (Exception e) {
-                log.error("录制摄像头 {} 失败: {}", camera.getId(), e.getMessage());
+                log.error("Failed to record camera {}: {}", camera.getId(), e.getMessage());
             }
         }
     }
@@ -87,7 +87,7 @@ public class VideoRecordingService {
         // 如果该摄像头已有录制进程在运行，跳过
         RecordingTask existing = activeRecordings.get(cameraId);
         if (existing != null && existing.process.isAlive()) {
-            log.debug("摄像头 {} 正在录制中，跳过", cameraId);
+            log.debug("Camera {} is already recording, skip", cameraId);
             return;
         }
 
@@ -96,7 +96,7 @@ public class VideoRecordingService {
         try {
             streamUrl = ezvizService.getLiveStreamUrlWithRetry(camera);
         } catch (Exception e) {
-            log.warn("获取摄像头 {} 直播地址失败: {}", cameraId, e.getMessage());
+            log.warn("Failed to get live stream URL for camera {}: {}", cameraId, e.getMessage());
             return;
         }
 
@@ -108,7 +108,7 @@ public class VideoRecordingService {
         String storagePath = recordingProperties.getStoragePath();
         File outputDir = new File(storagePath, cameraId + "/" + dateDir);
         if (!outputDir.exists() && !outputDir.mkdirs()) {
-            log.error("创建录制目录失败: {}", outputDir.getAbsolutePath());
+            log.error("Failed to create recording directory: {}", outputDir.getAbsolutePath());
             return;
         }
 
@@ -134,7 +134,7 @@ public class VideoRecordingService {
         pb.redirectErrorStream(true);
 
         try {
-            log.info("开始录制摄像头 {}: {} -> {}", cameraId, streamUrl, tempFile.getAbsolutePath());
+            log.info("Started recording camera {}: {} -> {}", cameraId, streamUrl, tempFile.getAbsolutePath());
             Process process = pb.start();
             activeRecordings.put(cameraId, new RecordingTask(process, startTime, tempFile, outputDir));
 
@@ -154,7 +154,7 @@ public class VideoRecordingService {
                         // 无论退出码如何，只要文件有内容就重命名保存
                         renameToFinal(tempFile, outputDir, startTime);
                     } else {
-                        log.warn("录制异常退出(exitCode={}, fileSize={}): {}",
+                        log.warn("Recording exited abnormally (exitCode={}, fileSize={}): {}",
                                 exitCode, tempFile.length(), tempFile.getAbsolutePath());
                         if (tempFile.exists() && tempFile.length() == 0) {
                             tempFile.delete();
@@ -166,7 +166,7 @@ public class VideoRecordingService {
             }, "recorder-" + cameraId).start();
 
         } catch (IOException e) {
-            log.error("启动 FFmpeg 失败: {}", e.getMessage());
+            log.error("Failed to start FFmpeg: {}", e.getMessage());
             activeRecordings.remove(cameraId);
         }
     }
@@ -183,9 +183,9 @@ public class VideoRecordingService {
         String finalName = startTimeStr + "-" + endTimeStr + ".mp4";
         File finalFile = new File(outputDir, finalName);
         if (tempFile.renameTo(finalFile)) {
-            log.info("录制完成: {} ({}KB, 时长{}秒)", finalFile.getAbsolutePath(), finalFile.length() / 1024, durationSec);
+            log.info("Recording finished: {} ({}KB, duration={}s)", finalFile.getAbsolutePath(), finalFile.length() / 1024, durationSec);
         } else {
-            log.warn("文件重命名失败: {} -> {}", tempFile.getAbsolutePath(), finalFile.getAbsolutePath());
+            log.warn("Failed to rename file: {} -> {}", tempFile.getAbsolutePath(), finalFile.getAbsolutePath());
         }
     }
 
@@ -211,7 +211,7 @@ public class VideoRecordingService {
         if (task.tempFile.exists() && task.tempFile.length() > 0) {
             renameToFinal(task.tempFile, task.outputDir, task.startTime);
         }
-        log.info("已停止摄像头 {} 的录制", cameraId);
+        log.info("Stopped recording for camera {}", cameraId);
     }
 
     /**
@@ -239,7 +239,7 @@ public class VideoRecordingService {
             }
         });
         activeRecordings.clear();
-        log.info("已停止所有录制");
+        log.info("Stopped all recordings");
     }
 
     /**

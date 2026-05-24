@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { RefreshButton } from "@/components/RefreshButton";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { ApiError, apiFetch } from "@/lib/http";
@@ -285,8 +285,8 @@ export default function CamerasPage() {
           </thead>
           <tbody>
             {(data?.list ?? []).map((c) => (
-              <>
-                <tr key={c.id} className="border-t border-zinc-100">
+              <Fragment key={c.id}>
+                <tr className="border-t border-zinc-100">
                   <td className="px-4 py-2">{c.id}</td>
                   <td className="px-4 py-2">{c.hamsterId}</td>
                   <td className="px-4 py-2 font-medium">{c.name}</td>
@@ -502,7 +502,7 @@ export default function CamerasPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
             {!data?.list?.length ? (
               <tr>

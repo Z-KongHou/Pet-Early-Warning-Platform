@@ -36,13 +36,13 @@ public class CameraStatusService {
             return;
         }
 
-        log.info("开始检测摄像头在线状态, 共{}个摄像头", cameras.size());
+        log.info("Checking camera online status, total={}", cameras.size());
 
         for (Camera camera : cameras) {
             try {
                 checkCameraStatus(camera);
             } catch (Exception e) {
-                log.error("检测摄像头 {} 状态失败: {}", camera.getId(), e.getMessage());
+                log.error("Failed to check camera {} status: {}", camera.getId(), e.getMessage());
             }
         }
     }
@@ -64,9 +64,9 @@ public class CameraStatusService {
                 updateWrapper.set(Camera::getLastOnlineTime, LocalDateTime.now());
             }
             cameraMapper.update(null, updateWrapper);
-            log.info("摄像头 {} 状态变更: {} -> {}", camera.getId(),
-                    currentStatus == 0 ? "离线" : "在线",
-                    online ? "在线" : "离线");
+            log.info("Camera {} status changed: {} -> {}", camera.getId(),
+                    currentStatus == null ? "unknown" : (currentStatus == 0 ? "offline" : "online"),
+                    online ? "online" : "offline");
         }
     }
 }

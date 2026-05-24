@@ -1,0 +1,20 @@
+{
+  "skill_name": "yingshi-latest-sync",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "对比一下 latest 和主目录下的前后端有什么差别",
+      "expected_output": "Structured diff report; snapshot path latest/yingshi/"
+    },
+    {
+      "id": 2,
+      "prompt": "把 latest 的新提交同步到项目主目录，并跑数据库迁移",
+      "expected_output": "Cherry-pick, post-sync with pnpm install, DB password 23050929, migrations"
+    },
+    {
+      "id": 3,
+      "prompt": "同步 latest 代码",
+      "expected_output": "Full sync workflow; do not touch ai/; include backend/video mp4"
+    }
+  ]
+}
