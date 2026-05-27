@@ -17,7 +17,7 @@ public class HealthController {
         Map<String, Object> data = new HashMap<>();
         data.put("status", "UP");
         data.put("timestamp", LocalDateTime.now().toString());
-        data.put("service", "仓鼠健康预警 AIoT 系统");
+        data.put("service", "Hamster Health Early Warning AIoT System");
         return Result.success(data);
     }
 }

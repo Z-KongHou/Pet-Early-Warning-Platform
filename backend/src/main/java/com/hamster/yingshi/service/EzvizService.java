@@ -114,15 +114,15 @@ public class EzvizService {
 
             log.warn("Ezviz cloud recording list error: code={}, msg={}", resp.getCode(), resp.getMsg());
             if ("10001".equals(resp.getCode()) || "10004".equals(resp.getCode())) {
-                throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "萤石Token已过期，请重试");
+                throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "Ezviz token expired, please retry");
             }
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                    "获取云录像列表失败(code=" + resp.getCode() + "): " + resp.getMsg());
+                    "Failed to fetch cloud recording list (code=" + resp.getCode() + "): " + resp.getMsg());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                    "解析萤石云录像列表响应失败: " + e.getMessage());
+                    "Failed to parse Ezviz cloud recording list response: " + e.getMessage());
         }
     }
 
@@ -166,7 +166,7 @@ public class EzvizService {
                     response.getBody(), EzvizTokenResponse.class);
             if (!"200".equals(tokenResp.getCode())) {
                 throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                        "获取萤石Token失败: " + tokenResp.getMsg());
+                        "Failed to fetch Ezviz token: " + tokenResp.getMsg());
             }
             platformToken = tokenResp.getData().getAccessToken();
             platformTokenExpireTime = tokenResp.getData().getExpireTime();
@@ -175,13 +175,13 @@ public class EzvizService {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                    "解析萤石Token响应失败: " + e.getMessage());
+                    "Failed to parse Ezviz token response: " + e.getMessage());
         }
     }
 
     /**
-     * 查询设备在线状态
-     * @return true=在线, false=离线
+     * Query device online status.
+     * @return true=online, false=offline
      */
     public boolean checkDeviceOnline(Camera camera) {
         try {
@@ -198,7 +198,7 @@ public class EzvizService {
             ResponseEntity<String> response = restTemplate.exchange(
                     DEVICE_INFO_URL, HttpMethod.POST, request, String.class);
 
-            // 解析响应
+            // Parse response
             com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
             String code = root.path("code").asText();
 
@@ -206,7 +206,7 @@ public class EzvizService {
                 com.fasterxml.jackson.databind.JsonNode data = root.path("data");
                 if (data != null && !data.isNull()) {
                     int status = data.path("status").asInt(0);
-                    // status: 1=在线, 2=离线
+                    // status: 1=online, 2=offline
                     return status == 1;
                 }
             }
@@ -248,25 +248,25 @@ public class EzvizService {
                     log.info("Live stream URL fetched, expireTime={}", liveResp.getData().getExpireTime());
                     return url;
                 }
-                throw new BusinessException(ErrorCode.EZVIZ_API_ERROR, "萤石未返回有效的直播地址");
+                throw new BusinessException(ErrorCode.EZVIZ_API_ERROR, "Ezviz did not return a valid live stream URL");
             }
 
             log.warn("Ezviz v2 live API error: code={}, msg={}", liveResp.getCode(), liveResp.getMsg());
 
             if ("10002".equals(liveResp.getCode())) {
-                throw new BusinessException(ErrorCode.CAMERA_OFFLINE, "摄像头不在线");
+                throw new BusinessException(ErrorCode.CAMERA_OFFLINE, "Camera is offline");
             }
             if ("10001".equals(liveResp.getCode()) || "10004".equals(liveResp.getCode())) {
-                throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "萤石Token已过期，请重试");
+                throw new BusinessException(ErrorCode.TOKEN_EXPIRED, "Ezviz token expired, please retry");
             }
 
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                    "获取直播地址失败(code=" + liveResp.getCode() + "): " + liveResp.getMsg());
+                    "Failed to fetch live stream URL (code=" + liveResp.getCode() + "): " + liveResp.getMsg());
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
-                    "解析萤石直播响应失败: " + e.getMessage());
+                    "Failed to parse Ezviz live stream response: " + e.getMessage());
         }
     }
 }

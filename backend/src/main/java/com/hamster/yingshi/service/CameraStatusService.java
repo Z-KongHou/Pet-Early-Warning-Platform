@@ -27,7 +27,7 @@ public class CameraStatusService {
     private CameraService cameraService;
 
     /**
-     * 每10秒检测一次摄像头在线状态
+     * Check camera online status every 10 seconds.
      */
     @Scheduled(fixedDelay = 10000)
     public void checkAllCamerasStatus() {
@@ -48,13 +48,13 @@ public class CameraStatusService {
     }
 
     /**
-     * 检测单个摄像头的在线状态
+     * Check online status for a single camera.
      */
     private void checkCameraStatus(Camera camera) {
         boolean online = ezvizService.checkDeviceOnline(camera);
         int newStatus = online ? 1 : 0;
 
-        // 只在状态变化时更新数据库
+        // Update database only when status changes
         Integer currentStatus = camera.getOnlineStatus();
         if (currentStatus == null || currentStatus != newStatus) {
             LambdaUpdateWrapper<Camera> updateWrapper = new LambdaUpdateWrapper<Camera>()

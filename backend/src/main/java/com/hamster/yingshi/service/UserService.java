@@ -42,7 +42,7 @@ public class UserService {
     public UserDetails loadUserByUsername(String username) {
         User user = findByUsername(username);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new RuntimeException("User not found");
         }
         return UserDetailsImpl.build(user);
     }

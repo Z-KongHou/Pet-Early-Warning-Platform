@@ -10,7 +10,7 @@ public class Result<T> {
     private Integer code;
     private String message;
     private T data;
-    /** 与前端及网关一致；仅错误响应携带 */
+    /** Matches frontend and gateway conventions; included only on error responses */
     private String requestId;
 
     public static <T> Result<T> success() {

@@ -17,7 +17,7 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>yingshi</name>
-    <description>仓鼠健康预警 AIoT 系统</description>
+    <description>Hamster Health Early Warning AIoT System</description>
 
     <properties>
         <java.version>11</java.version>
@@ -92,7 +92,7 @@
 
     <build>
         <plugins>
-            <!-- 让 Maven 编译时执行 Lombok，否则 @Data 等不会生成 getter/setter -->
+            <!-- Run Lombok during Maven compile so @Data generates getters/setters -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

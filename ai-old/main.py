@@ -8,6 +8,7 @@ import requests
 import os
 import uuid
 import time
+import sqlite3
 from datetime import datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -68,19 +69,184 @@ EZVIZ_ACCESS_TOKEN = os.getenv("EZVIZ_ACCESS_TOKEN", "at.35ku3ja7892fcnou64hea23
 
 PET_DETECTION_API = "https://open.ys7.com/api/service/intelligence/algo/analysis/pet_detection"
 
-PET_STATE_CACHE = {}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "upload")
+DATABASE_PATH = "pet_analysis.db"
+MAX_HISTORY_RECORDS = 3
+MAX_BATCH_IMAGES = 20
 
 DAY_START_HOUR = 8
 DAY_END_HOUR = 22
 
-DAY_STATIONARY_THRESHOLD = 5 * 60 * 60
-NIGHT_STATIONARY_THRESHOLD = 3 * 60 * 60
+DAY_STATIONARY_THRESHOLD = 3 * 60
+NIGHT_STATIONARY_THRESHOLD = 3 * 60
 
-DAY_EATING_THRESHOLD = 5 * 60 * 60
-NIGHT_EATING_THRESHOLD = 3 * 60 * 60
+DAY_EATING_THRESHOLD = 3 * 60
+NIGHT_EATING_THRESHOLD = 3 * 60
 
-MOVEMENT_THRESHOLD = 0.01
-MAX_HISTORY = 180
+MOVEMENT_THRESHOLD = 0.1
+
+def init_database():
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pet_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            camera_id TEXT NOT NULL,
+            timestamp REAL NOT NULL,
+            has_pet INTEGER NOT NULL,
+            movement_state TEXT DEFAULT 'stationary',
+            food_state TEXT DEFAULT 'unknown',
+            position_x INTEGER,
+            position_y INTEGER,
+            position_width INTEGER,
+            position_height INTEGER,
+            confidence REAL,
+            created_at REAL DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_camera_timestamp ON pet_analysis(camera_id, timestamp)
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_db_connection():
+    return sqlite3.connect(DATABASE_PATH)
+
+def insert_analysis_record(camera_id, timestamp, analysis):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    position = analysis.get("position") or {}
+    
+    movement_state = "moving" if analysis.get("is_moving", False) else "stationary"
+    food_status = analysis.get("food_status", "unknown")
+    if food_status == "食盆不空":
+        food_state = "present"
+    elif food_status == "食盆为空":
+        food_state = "empty"
+    else:
+        food_state = "unknown"
+    
+    cursor.execute('''
+        INSERT INTO pet_analysis (
+            camera_id, timestamp, has_pet, movement_state, food_state,
+            position_x, position_y, position_width, position_height, confidence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        camera_id,
+        timestamp,
+        1 if analysis.get("has_pet", False) else 0,
+        movement_state,
+        food_state,
+        position.get("x"),
+        position.get("y"),
+        position.get("width"),
+        position.get("height"),
+        analysis.get("confidence", 0)
+    ))
+    conn.commit()
+    
+    cursor.execute('''
+        DELETE FROM pet_analysis 
+        WHERE camera_id = ? 
+        AND id NOT IN (
+            SELECT id FROM pet_analysis WHERE camera_id = ? ORDER BY timestamp DESC LIMIT ?
+        )
+    ''', (camera_id, camera_id, MAX_HISTORY_RECORDS))
+    conn.commit()
+    conn.close()
+
+def get_all_history(camera_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM pet_analysis 
+        WHERE camera_id = ? 
+        ORDER BY timestamp ASC
+    ''', (camera_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = []
+    for row in rows:
+        history.append({
+            "id": row[0],
+            "camera_id": row[1],
+            "timestamp": row[2],
+            "has_pet": bool(row[3]),
+            "movement_state": row[4],
+            "is_moving": row[4] == "moving",
+            "food_state": row[5],
+            "position": {
+                "x": row[6],
+                "y": row[7],
+                "width": row[8],
+                "height": row[9]
+            } if row[6] is not None else None,
+            "confidence": row[10]
+        })
+    return history
+
+def get_camera_state(camera_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM pet_analysis 
+        WHERE camera_id = ? AND has_pet = 1
+        ORDER BY timestamp DESC LIMIT 1
+    ''', (camera_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "last_position": {
+                "x": row[6],
+                "y": row[7],
+                "width": row[8],
+                "height": row[9]
+            } if row[6] is not None else None,
+            "last_movement_state": row[4],
+            "last_food_state": row[5],
+            "total_analyses": get_total_analyses(camera_id)
+        }
+    return {
+        "last_position": None,
+        "last_movement_state": "stationary",
+        "last_food_state": "unknown",
+        "total_analyses": 0
+    }
+
+def get_total_analyses(camera_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM pet_analysis WHERE camera_id = ?', (camera_id,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+
+
+init_database()
+
+def ensure_upload_dir():
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+def save_debug_upload(camera_id: str, index: int, filename: str, image_bytes: bytes) -> str:
+    """保存前端上传的原始图片到 upload/，便于调试抓帧与分析链路。"""
+    ensure_upload_dir()
+    safe_name = os.path.basename(filename or "capture.jpg")
+    for ch in '<>:"/\\|?*':
+        safe_name = safe_name.replace(ch, "_")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    out_name = f"{camera_id}_{ts}_{index}_{safe_name}"
+    out_path = os.path.join(UPLOAD_DIR, out_name)
+    with open(out_path, "wb") as f:
+        f.write(image_bytes)
+    return os.path.relpath(out_path, BASE_DIR).replace("\\", "/")
+
+ensure_upload_dir()
 
 def is_daytime(timestamp: float = None) -> bool:
     if timestamp is None:
@@ -194,8 +360,19 @@ def detect_pet(access_token: str, image_data: str, data_type: str = "url") -> di
         raise HTTPException(status_code=500, detail=f"调用宠物检测API网络异常: {str(e)}")
 
 def analyze_pet_behavior(pet_detection_result: dict) -> dict:
-    data = pet_detection_result.get("data", {})
-    images = data.get("images", [])
+    if pet_detection_result is None:
+        return {
+            "has_pet": False,
+            "pet_type": "仓鼠",
+            "position": None,
+            "is_moving": False,
+            "food_status": "unknown",
+            "anomaly": {"long_stationary": False, "no_eating": False},
+            "confidence": 0.0
+        }
+    
+    data = pet_detection_result.get("data") or {}
+    images = data.get("images") or []
     
     analysis = {
         "has_pet": False,
@@ -210,8 +387,8 @@ def analyze_pet_behavior(pet_detection_result: dict) -> dict:
     if not images:
         return analysis
     
-    image_result = images[0]
-    content_ann = image_result.get("contentAnn", {})
+    image_result = images[0] or {}
+    content_ann = image_result.get("contentAnn") or {}
     bboxes = content_ann.get("bboxes", [])
     
     if bboxes:
@@ -282,87 +459,67 @@ def analyze_bowl_color(image_bytes: bytes, bowl_position: dict) -> float:
         return 1.0
 
 def update_pet_state(camera_id: str, analysis: dict, image_timestamp: Optional[float] = None) -> dict:
-    current_time = image_timestamp if image_timestamp else time.time()
-    
-    if camera_id not in PET_STATE_CACHE:
-        PET_STATE_CACHE[camera_id] = {
-            "last_position": None,
-            "last_movement_time": current_time,
-            "last_eating_time": current_time,
-            "stationary_start_time": current_time,
-            "no_eating_start_time": current_time,
-            "food_bowl_position": None,
-            "history": [],
-            "total_analyses": 0,
-            "consecutive_non_eating_frames": 0
+    if analysis is None:
+        analysis = {
+            "has_pet": False,
+            "pet_type": "仓鼠",
+            "position": None,
+            "is_moving": False,
+            "food_status": "unknown",
+            "anomaly": {"long_stationary": False, "no_eating": False},
+            "confidence": 0.0
         }
     
-    state = PET_STATE_CACHE[camera_id]
+    if "anomaly" not in analysis:
+        analysis["anomaly"] = {"long_stationary": False, "no_eating": False}
     
-    if analysis["has_pet"] and analysis["position"]:
-        if state["last_position"]:
-            prev_pos = state["last_position"]
-            curr_pos = analysis["position"]
-            
-            prev_center = (prev_pos["x"] + prev_pos["width"]/2, prev_pos["y"] + prev_pos["height"]/2)
-            curr_center = (curr_pos["x"] + curr_pos["width"]/2, curr_pos["y"] + curr_pos["height"]/2)
-            
-            distance = ((prev_center[0] - curr_center[0])**2 + (prev_center[1] - curr_center[1])**2)**0.5
-            avg_size = ((prev_pos["width"] + prev_pos["height"]) + (curr_pos["width"] + curr_pos["height"])) / 4
-            
-            if avg_size > 0:
-                movement_rate = distance / avg_size
-                analysis["is_moving"] = movement_rate > MOVEMENT_THRESHOLD
-                
-                if analysis["is_moving"]:
-                    state["last_movement_time"] = current_time
-                    state["stationary_start_time"] = current_time
-        
-        state["last_position"] = analysis["position"]
-        
-        if state["food_bowl_position"]:
-            if is_in_food_bowl(analysis["position"], state["food_bowl_position"]):
-                state["last_eating_time"] = current_time
-                state["no_eating_start_time"] = current_time
-                state["consecutive_non_eating_frames"] = 0
-                analysis["is_eating"] = True
-            else:
-                state["consecutive_non_eating_frames"] += 1
-                analysis["is_eating"] = False
-        else:
-            analysis["is_eating"] = False
-    
-    stationary_threshold = get_stationary_threshold(current_time)
-    stationary_duration = current_time - state["stationary_start_time"]
-    analysis["anomaly"]["long_stationary"] = stationary_duration > stationary_threshold
-    
-    eating_threshold = get_eating_threshold(current_time)
-    no_eating_duration = current_time - state["last_eating_time"]
-    analysis["anomaly"]["no_eating"] = no_eating_duration > eating_threshold
+    current_time = image_timestamp if image_timestamp else time.time()
     
     if "food_status" not in analysis:
         analysis["food_status"] = "unknown"
     
-    analysis_record = {
-        "timestamp": current_time,
-        "has_pet": analysis["has_pet"],
-        "position": analysis["position"],
-        "is_moving": analysis.get("is_moving", False),
-        "is_eating": analysis.get("is_eating", False),
-        "food_status": analysis["food_status"],
-        "confidence": analysis["confidence"]
-    }
+    current_movement_state = "moving" if analysis.get("is_moving", False) else "stationary"
+    current_food_state = "empty" if analysis.get("food_status") == "食盆为空" else "present"
     
-    state["history"].append(analysis_record)
-    if len(state["history"]) > MAX_HISTORY:
-        state["history"] = state["history"][-MAX_HISTORY:]
+    insert_analysis_record(camera_id, current_time, analysis)
     
-    state["total_analyses"] += 1
-    state["last_activity_time"] = current_time
+    history = get_all_history(camera_id)
+    
+    stationary_duration = 0
+    if len(history) >= 1:
+        start_time = history[-1]["timestamp"]
+        for record in reversed(history[:-1]):
+            if record["movement_state"] == current_movement_state:
+                start_time = record["timestamp"]
+            else:
+                break
+        stationary_duration = current_time - start_time if current_movement_state == "stationary" else 0
+    
+    empty_food_duration = 0
+    if len(history) >= 1:
+        start_time = history[-1]["timestamp"]
+        for record in reversed(history[:-1]):
+            if record["food_state"] == current_food_state:
+                start_time = record["timestamp"]
+            else:
+                break
+        empty_food_duration = current_time - start_time if current_food_state == "empty" else 0
+    
+    stationary_threshold = get_stationary_threshold(current_time)
+    analysis["anomaly"]["long_stationary"] = stationary_duration > stationary_threshold
+    
+    eating_threshold = get_eating_threshold(current_time)
+    analysis["anomaly"]["no_eating"] = empty_food_duration > eating_threshold
+    
+    analysis["stationary_duration"] = stationary_duration
+    analysis["empty_food_duration"] = empty_food_duration
     
     return analysis
 
 def calculate_activity_score(analysis: dict) -> int:
+    if analysis is None:
+        return 50
+    
     score = 50
     
     if analysis.get("has_pet", False):
@@ -400,6 +557,9 @@ def get_activity_description(score: int) -> str:
         return "仓鼠活动异常，需要检查"
 
 def get_analysis_result(analysis: dict, timestamp: float = None) -> str:
+    if analysis is None:
+        return "未检测到仓鼠"
+    
     if not analysis.get("has_pet", False):
         return "未检测到仓鼠"
     
@@ -409,50 +569,59 @@ def get_analysis_result(analysis: dict, timestamp: float = None) -> str:
         result += "正在活动中"
     else:
         result += "处于静止状态"
+        stationary_duration = analysis.get("stationary_duration", 0)
+        if stationary_duration > 0:
+            minutes = int(stationary_duration // 60)
+            seconds = int(stationary_duration % 60)
+            if minutes > 0:
+                result += f"（已持续{minutes}分{seconds}秒）"
     
     food_status = analysis.get("food_status", "unknown")
     if food_status == "食盆不空":
         result += "，食盆中有食物"
     elif food_status == "食盆为空":
         result += "，食盆为空"
+        empty_duration = analysis.get("empty_food_duration", 0)
+        if empty_duration > 0:
+            minutes = int(empty_duration // 60)
+            seconds = int(empty_duration % 60)
+            if minutes > 0:
+                result += f"（已持续{minutes}分{seconds}秒）"
     
-    stationary_hours = 5 if is_daytime(timestamp) else 3
-    eating_hours = 5 if is_daytime(timestamp) else 3
+    stationary_minutes = 3
+    eating_minutes = 3
     
     if analysis.get("anomaly", {}).get("long_stationary", False):
-        result += f"，已超过{stationary_hours}小时未移动"
+        result += f"，预警：已超过{stationary_minutes}分钟持续静止"
     
     if analysis.get("anomaly", {}).get("no_eating", False):
-        result += f"，已超过{eating_hours}小时未到食盆区域进食"
+        result += f"，预警：已超过{eating_minutes}分钟食盆为空"
     
     return result
 
 def analyze_movement_trend(history: list) -> dict:
     if not history:
         return {
-            "total_records": 0,
-            "movement_ratio": 0.0,
-            "average_confidence": 0.0,
-            "active_periods": 0,
-            "stationary_periods": 0,
             "trend": "stable",
+            "trend_description": "暂无数据",
             "suggestion": "暂无足够数据进行趋势分析"
         }
     
     total_records = len(history)
-    moving_count = sum(1 for record in history if record.get("is_moving", False))
-    pet_detected_count = sum(1 for record in history if record.get("has_pet", False))
+    valid_records = [r for r in history if r is not None]
+    moving_count = sum(1 for record in valid_records if record.get("is_moving", False))
+    pet_detected_count = sum(1 for record in valid_records if record.get("has_pet", False))
     
     movement_ratio = moving_count / total_records if total_records > 0 else 0.0
-    avg_confidence = sum(record.get("confidence", 0) for record in history) / total_records if total_records > 0 else 0.0
+    avg_confidence = sum(record.get("confidence", 0) for record in valid_records) / total_records if total_records > 0 else 0.0
     
-    recent_moving = sum(1 for record in history[-3:] if record.get("is_moving", False)) if len(history) >= 3 else moving_count
-    earlier_moving = sum(1 for record in history[:-3] if record.get("is_moving", False)) if len(history) > 3 else 0
+    recent_moving = sum(1 for record in valid_records[-3:] if record.get("is_moving", False)) if len(valid_records) >= 3 else moving_count
+    earlier_moving = sum(1 for record in valid_records[:-3] if record.get("is_moving", False)) if len(valid_records) > 3 else 0
     
     if earlier_moving > 0:
-        if recent_moving / min(3, len(history)) > earlier_moving / (len(history) - 3):
+        if recent_moving / min(3, len(valid_records)) > earlier_moving / (len(valid_records) - 3):
             trend = "increasing"
-        elif recent_moving / min(3, len(history)) < earlier_moving / (len(history) - 3) * 0.7:
+        elif recent_moving / min(3, len(valid_records)) < earlier_moving / (len(valid_records) - 3) * 0.7:
             trend = "decreasing"
         else:
             trend = "stable"
@@ -475,98 +644,97 @@ def analyze_movement_trend(history: list) -> dict:
         suggestions.append("检测置信度较低，建议调整摄像头角度或光线")
     
     return {
-        "total_records": total_records,
-        "pet_detected_count": pet_detected_count,
-        "movement_ratio": round(movement_ratio, 4),
-        "average_confidence": round(avg_confidence, 4),
-        "active_periods": moving_count,
-        "stationary_periods": total_records - moving_count,
         "trend": trend,
         "trend_description": trend_descriptions.get(trend, "未知趋势"),
         "suggestion": "; ".join(suggestions) if suggestions else "仓鼠活动状态正常"
     }
 
-@app.post("/api/hamster/analyze", summary="仓鼠健康分析", description="上传单张图片分析仓鼠健康状态，支持与历史图片对比分析活动情况")
+@app.post("/api/hamster/analyze", summary="仓鼠健康分析", description="上传图片分析仓鼠健康状态，支持单张或批量上传（最多20张）")
 async def analyze_hamster(
-    file: UploadFile = File(..., description="上传单张图片文件进行仓鼠健康分析"),
+    files: List[UploadFile] = File(..., description="上传图片文件进行仓鼠健康分析，支持批量上传，最多20张"),
     camera_id: str = Form("default_camera", description="摄像头标识，用于关联历史图片"),
-    bowl_x: Optional[int] = Form(10, description="食盆位置X坐标"),
-    bowl_y: Optional[int] = Form(320, description="食盆位置Y坐标"),
-    bowl_width: Optional[int] = Form(150, description="食盆宽度"),
-    bowl_height: Optional[int] = Form(150, description="食盆高度"),
+    bowl_x: Optional[int] = Form(180, description="食盆位置X坐标"),
+    bowl_y: Optional[int] = Form(720, description="食盆位置Y坐标"),
+    bowl_width: Optional[int] = Form(180, description="食盆宽度"),
+    bowl_height: Optional[int] = Form(180, description="食盆高度"),
     x_request_id: Optional[str] = Header(None, alias="X-Request-Id")
 ):
     request_id = x_request_id if x_request_id else str(uuid.uuid4())
     
-    if not file.content_type.startswith("image/"):
-        return error_response(40001, "文件必须是图片", request_id)
-
-    try:
-        original_image_bytes = await file.read()
-        
-        image_for_api = original_image_bytes
-        if len(image_for_api) > 500 * 1024:
-            image_for_api = compress_image(image_for_api, max_size_kb=500)
-        
-        image_base64 = base64.b64encode(image_for_api).decode("utf-8")
-        
-        image_timestamp = extract_time_from_image(original_image_bytes)
-        
-        if camera_id not in PET_STATE_CACHE:
-            PET_STATE_CACHE[camera_id] = {
-                "last_position": None,
-                "last_movement_time": time.time(),
-                "last_eating_time": time.time(),
-                "stationary_start_time": time.time(),
-                "no_eating_start_time": time.time(),
-                "food_bowl_position": None,
-                "history": [],
-                "total_analyses": 0,
-                "consecutive_non_eating_frames": 0
-            }
-        
-        if all([bowl_x, bowl_y, bowl_width, bowl_height]):
-            PET_STATE_CACHE[camera_id]["food_bowl_position"] = {
-                "x": bowl_x,
-                "y": bowl_y,
-                "width": bowl_width,
-                "height": bowl_height
-            }
-        
-        state = PET_STATE_CACHE.get(camera_id)
-        bowl_position = state.get("food_bowl_position")
-        
-        bowl_analysis = {
-            "blue_ratio": None,
-            "food_status": "unknown"
-        }
-        
-        if bowl_position:
-            blue_ratio = analyze_bowl_color(original_image_bytes, bowl_position)
-            bowl_analysis["blue_ratio"] = round(blue_ratio, 4)
+    total_uploaded = len(files)
+    if total_uploaded > MAX_BATCH_IMAGES:
+        files = files[:MAX_BATCH_IMAGES]
+        warning_message = f"上传了 {total_uploaded} 张图片，超过最大限制 {MAX_BATCH_IMAGES} 张，已截断处理前 {MAX_BATCH_IMAGES} 张"
+    else:
+        warning_message = None
+    
+    bowl_position = {"x": bowl_x, "y": bowl_y, "width": bowl_width, "height": bowl_height} if all([bowl_x, bowl_y, bowl_width, bowl_height]) else None
+    
+    results = []
+    total_success = 0
+    total_has_pet = 0
+    anomaly_counts = {"long_stationary": 0, "no_eating": 0}
+    
+    for index, file in enumerate(files):
+        try:
+            if not file.content_type.startswith("image/"):
+                results.append({
+                    "index": index,
+                    "filename": file.filename,
+                    "success": False,
+                    "error": "文件必须是图片"
+                })
+                continue
             
-            if blue_ratio > 0.85:
-                bowl_analysis["food_status"] = "食盆为空"
+            original_image_bytes = await file.read()
+            saved_path = save_debug_upload(camera_id, index, file.filename or "capture.jpg", original_image_bytes)
+            
+            image_for_api = original_image_bytes
+            if len(image_for_api) > 500 * 1024:
+                image_for_api = compress_image(image_for_api, max_size_kb=500)
+            
+            image_base64 = base64.b64encode(image_for_api).decode("utf-8")
+            
+            image_timestamp = extract_time_from_image(original_image_bytes)
+            current_time = image_timestamp if image_timestamp else time.time()
+            
+            bowl_analysis = {
+                "blue_ratio": None,
+                "food_status": "unknown"
+            }
+            
+            if bowl_position:
+                blue_ratio = analyze_bowl_color(original_image_bytes, bowl_position)
+                bowl_analysis["blue_ratio"] = round(blue_ratio, 4)
+                
+                if blue_ratio > 0.85:
+                    bowl_analysis["food_status"] = "食盆为空"
+                else:
+                    bowl_analysis["food_status"] = "食盆不空"
+            
+            access_token = get_access_token()
+            pet_result = detect_pet(access_token, image_base64, data_type="base64")
+            analysis = analyze_pet_behavior(pet_result)
+            
+            analysis["blue_ratio"] = bowl_analysis["blue_ratio"]
+            analysis["food_status"] = bowl_analysis["food_status"]
+            
+            if bowl_position and analysis.get("position"):
+                analysis["is_in_food_bowl"] = is_in_food_bowl(analysis["position"], bowl_position)
             else:
-                bowl_analysis["food_status"] = "食盆不空"
-        
-        access_token = get_access_token()
-        pet_result = detect_pet(access_token, image_base64, data_type="base64")
-        analysis = analyze_pet_behavior(pet_result)
-        
-        analysis["blue_ratio"] = bowl_analysis["blue_ratio"]
-        analysis["food_status"] = bowl_analysis["food_status"]
-        
-        history = state.get("history", []) if state else []
-        
-        movements = []
-        if history and analysis["has_pet"] and analysis["position"]:
-            curr_pos = analysis["position"]
-            curr_center = (curr_pos["x"] + curr_pos["width"]/2, curr_pos["y"] + curr_pos["height"]/2)
+                analysis["is_in_food_bowl"] = False
             
-            for i, record in enumerate(reversed(history)):
-                if record["has_pet"] and record["position"]:
-                    prev_pos = record["position"]
+            history = get_all_history(camera_id)
+            
+            analysis["is_moving"] = False
+            
+            if history and len(history) >= 1 and analysis.get("has_pet", False) and analysis.get("position"):
+                latest_record = history[-1]
+                if latest_record is not None and latest_record.get("has_pet", False) and latest_record.get("position"):
+                    curr_pos = analysis["position"]
+                    curr_center = (curr_pos["x"] + curr_pos["width"]/2, curr_pos["y"] + curr_pos["height"]/2)
+                    
+                    prev_pos = latest_record["position"]
                     prev_center = (prev_pos["x"] + prev_pos["width"]/2, prev_pos["y"] + prev_pos["height"]/2)
                     
                     distance = ((prev_center[0] - curr_center[0])**2 + (prev_center[1] - curr_center[1])**2)**0.5
@@ -575,80 +743,68 @@ async def analyze_hamster(
                     if avg_size > 0:
                         movement_rate = distance / avg_size
                         is_moving = movement_rate > MOVEMENT_THRESHOLD
-                        
-                        movements.append({
-                            "from_image": f"history_{len(history)-i}",
-                            "to_image": "current",
-                            "movement_rate": round(movement_rate, 4),
-                            "is_moving": is_moving,
-                            "time_diff": time.time() - record["timestamp"]
-                        })
+                        analysis["is_moving"] = is_moving
             
-            if movements:
-                analysis["is_moving"] = any(m["is_moving"] for m in movements)
-        
-        analysis = update_pet_state(camera_id, analysis, image_timestamp)
-        
-        activity_score = calculate_activity_score(analysis)
-        activity_status = get_activity_status(activity_score)
-        description = get_activity_description(activity_score)
-        analysis_result_text = get_analysis_result(analysis, image_timestamp)
-        
-        movement_trend = analyze_movement_trend(history)
-        
-        historical_summary = {
-            "total_analyses": PET_STATE_CACHE.get(camera_id, {}).get("total_analyses", 1),
-            "history_count": len(history),
-            "first_analysis_time": history[0]["timestamp"] if history else time.time(),
-            "last_activity_time": PET_STATE_CACHE.get(camera_id, {}).get("last_activity_time", time.time()),
-            "movement_detection_enabled": len(history) > 0,
-            "food_bowl_set": state.get("food_bowl_position") is not None,
-            "movement_trend": movement_trend
-        }
-        
-        movement_summary = None
-        if movements:
-            movement_summary = {
-                "total_comparisons": len(movements),
-                "moving_frames": sum(1 for m in movements if m["is_moving"]),
-                "avg_movement_rate": sum(m["movement_rate"] for m in movements) / len(movements),
-                "max_movement_rate": max(m["movement_rate"] for m in movements),
-                "min_movement_rate": min(m["movement_rate"] for m in movements)
+            analysis = update_pet_state(camera_id, analysis, image_timestamp)
+            
+            activity_score = calculate_activity_score(analysis)
+            activity_status = get_activity_status(activity_score)
+            analysis_result_text = get_analysis_result(analysis, image_timestamp)
+            
+            result = {
+                "index": index,
+                "filename": file.filename,
+                "saved_path": saved_path,
+                "success": True,
+                "has_pet": analysis["has_pet"],
+                "is_moving": analysis["is_moving"],
+                "is_in_food_bowl": analysis.get("is_in_food_bowl", False),
+                "food_status": analysis["food_status"],
+                "anomaly": analysis["anomaly"],
+                "confidence": round(analysis["confidence"], 4),
+                "activity_score": activity_score,
+                "activity_status": activity_status,
+                "analysis_result": analysis_result_text,
+                "image_timestamp": image_timestamp,
+                "current_time": current_time
             }
-        
-        result = {
-            "has_pet": analysis["has_pet"],
-            "pet_type": analysis["pet_type"],
-            "position": analysis["position"],
-            "is_moving": analysis["is_moving"],
-            "is_eating": analysis.get("is_eating", False),
-            "food_status": analysis["food_status"],
-            "blue_ratio": analysis.get("blue_ratio"),
-            "anomaly": analysis["anomaly"],
-            "confidence": round(analysis["confidence"], 4),
-            "image_time": datetime.fromtimestamp(image_timestamp).isoformat() if image_timestamp else None,
-            "movements": movements,
-            "movement_summary": movement_summary,
-            "activity_score": activity_score,
-            "activity_status": activity_status,
-            "description": description,
-            "analysis_result": analysis_result_text,
-            "camera_id": camera_id,
-            "food_bowl_position": state.get("food_bowl_position"),
-            "history": historical_summary,
-            "summary": {
-                "any_moving": any(m["is_moving"] for m in movements) if movements else False,
-                "all_have_pet": analysis["has_pet"],
-                "total_images": 1 + len(history),
-                "successful_analyses": 1 + sum(1 for r in history if r["has_pet"])
-            }
-        }
-        
-        return success_response(result)
-    except HTTPException as e:
-        return error_response(40001, str(e.detail), request_id)
-    except Exception as e:
-        return error_response(50001, f"AI分析服务异常: {str(e)}", request_id)
+            
+            results.append(result)
+            total_success += 1
+            
+            if analysis.get("has_pet", False):
+                total_has_pet += 1
+            
+            if analysis.get("anomaly", {}).get("long_stationary", False):
+                anomaly_counts["long_stationary"] += 1
+            if analysis.get("anomaly", {}).get("no_eating", False):
+                anomaly_counts["no_eating"] += 1
+                
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            results.append({
+                "index": index,
+                "filename": file.filename,
+                "success": False,
+                "error": f"分析失败: {str(e)}"
+            })
+    
+    summary = {
+        "total_uploaded": total_uploaded,
+        "processed_count": len(files),
+        "success_count": total_success,
+        "failed_count": len(files) - total_success,
+        "has_pet_count": total_has_pet,
+        "no_pet_count": total_success - total_has_pet,
+        "anomaly_counts": anomaly_counts,
+        "warning": warning_message
+    }
+    
+    return success_response({
+        "results": results,
+        "summary": summary
+    })
 
 
 

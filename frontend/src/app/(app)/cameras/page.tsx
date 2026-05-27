@@ -1,8 +1,9 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { HamsterLiveAnalysis } from "@/components/HamsterLiveAnalysis";
 import { RefreshButton } from "@/components/RefreshButton";
-import { VideoPlayer } from "@/components/VideoPlayer";
+import { VideoPlayer, type EZUIKitPlayerInstance } from "@/components/VideoPlayer";
 import { ApiError, apiFetch } from "@/lib/http";
 import { authHeaders } from "@/lib/authed";
 import type { Camera, Pagination } from "@/lib/types";
@@ -40,9 +41,26 @@ export default function CamerasPage() {
   // 展开的摄像头ID（用于录像列表）
   const [expandedCameraId, setExpandedCameraId] = useState<number | null>(null);
 
+  const playerRef = useRef<EZUIKitPlayerInstance | null>(null);
+  const liveVideoColRef = useRef<HTMLDivElement>(null);
+  const [analysisPanelMaxH, setAnalysisPanelMaxH] = useState<number | undefined>(undefined);
+
   useEffect(() => {
     refresh().catch((e) => setErr(e instanceof Error ? e.message : "加载失败"));
   }, []);
+
+  useEffect(() => {
+    const el = liveVideoColRef.current;
+    if (!el || !streamInfo) {
+      setAnalysisPanelMaxH(undefined);
+      return;
+    }
+    const syncHeight = () => setAnalysisPanelMaxH(el.offsetHeight);
+    syncHeight();
+    const ro = new ResizeObserver(syncHeight);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [streamInfo, streamLoading]);
 
   async function refresh() {
     const d = await apiFetch<Pagination<Camera>>("/api/cameras?page=1&size=20", { headers: authHeaders() });
@@ -132,6 +150,7 @@ export default function CamerasPage() {
   }, [selectedDate, localVideoUrl]);
 
   const closeStream = useCallback(() => {
+    playerRef.current = null;
     setActiveCamera(null);
     setStreamInfo(null);
     setStreamErr(null);
@@ -258,13 +277,28 @@ export default function CamerasPage() {
               正在获取视频流...
             </div>
           ) : streamInfo ? (
-            <VideoPlayer
-              deviceKey={streamInfo.deviceKey}
-              channelNo={streamInfo.channelNo}
-              accessToken={streamInfo.accessToken}
-              mode="live"
-              onError={setStreamErr}
-            />
+            <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+              <div
+                ref={liveVideoColRef}
+                className="flex-1 min-w-0 w-full aspect-video rounded-lg overflow-hidden bg-black"
+              >
+                <VideoPlayer
+                  deviceKey={streamInfo.deviceKey}
+                  channelNo={streamInfo.channelNo}
+                  accessToken={streamInfo.accessToken}
+                  mode="live"
+                  playerRef={playerRef}
+                  onError={setStreamErr}
+                />
+              </div>
+              {activeCamera && (
+                <HamsterLiveAnalysis
+                  cameraId={activeCamera.id}
+                  playerRef={playerRef}
+                  maxHeight={analysisPanelMaxH}
+                />
+              )}
+            </div>
           ) : null}
         </div>
       )}

@@ -33,7 +33,7 @@ public class VideoRecordingService {
     @Autowired
     private EzvizService ezvizService;
 
-    // 录制任务信息
+    // Recording task metadata
     private static class RecordingTask {
         final Process process;
         final LocalDateTime startTime;
@@ -48,7 +48,7 @@ public class VideoRecordingService {
         }
     }
 
-    // cameraId -> RecordingTask, 用于跟踪正在录制的进程
+    // cameraId -> RecordingTask, tracks active recording processes
     private final Map<Integer, RecordingTask> activeRecordings = new ConcurrentHashMap<>();
 
     @Scheduled(fixedDelayString = "${recording.duration-seconds:300}000")
@@ -77,21 +77,21 @@ public class VideoRecordingService {
     private void recordCamera(Camera camera) {
         int cameraId = camera.getId();
 
-        // 检查该摄像头是否启用了录像
+        // Skip if recording is disabled for this camera
         if (camera.getRecordingEnabled() == null || camera.getRecordingEnabled() != 1) {
             return;
         }
 
         int duration = recordingProperties.getDurationSeconds();
 
-        // 如果该摄像头已有录制进程在运行，跳过
+        // Skip if a recording process is already running for this camera
         RecordingTask existing = activeRecordings.get(cameraId);
         if (existing != null && existing.process.isAlive()) {
             log.debug("Camera {} is already recording, skip", cameraId);
             return;
         }
 
-        // 获取直播流地址
+        // Fetch live stream URL
         String streamUrl;
         try {
             streamUrl = ezvizService.getLiveStreamUrlWithRetry(camera);
@@ -100,7 +100,7 @@ public class VideoRecordingService {
             return;
         }
 
-        // 构建输出路径: video/{cameraId}/{date}/
+        // Build output path: video/{cameraId}/{date}/
         LocalDateTime startTime = LocalDateTime.now();
         String dateDir = startTime.format(DATE_FMT);
         String startTimeStr = startTime.format(TIME_FMT);
@@ -112,23 +112,23 @@ public class VideoRecordingService {
             return;
         }
 
-        // 使用临时文件名录制，结束后根据实际时长重命名
+        // Record to a temp file, then rename based on actual duration when finished
         File tempFile = new File(outputDir, startTimeStr + "-recording.mp4");
 
-        // 构建 FFmpeg 命令（转码为标准 H.264，确保 MP4 兼容性）
+        // Build FFmpeg command (transcode to standard H.264 for MP4 compatibility)
         String ffmpegPath = recordingProperties.getFfmpegPath();
         ProcessBuilder pb = new ProcessBuilder(
                 ffmpegPath,
-                "-y",                          // 覆盖已有文件
-                "-fflags", "+genpts",           // 为直播流生成 PTS 时间戳
-                "-i", streamUrl,               // 输入流
-                "-t", String.valueOf(duration), // 录制时长(秒)
-                "-c:v", "libx264",             // 转码为 H.264
-                "-preset", "ultrafast",         // 最快编码速度，降低 CPU 占用
-                "-crf", "28",                  // 画质(18-28为合理范围，28偏高压缩)
-                "-c:a", "aac",                 // 音频编码为 AAC
-                "-movflags", "+faststart",     // 将 moov atom 放到文件头部
-                "-f", "mp4",                   // 输出格式
+                "-y",                          // overwrite existing file
+                "-fflags", "+genpts",           // generate PTS timestamps for live stream
+                "-i", streamUrl,               // input stream
+                "-t", String.valueOf(duration), // recording duration (seconds)
+                "-c:v", "libx264",             // transcode to H.264
+                "-preset", "ultrafast",         // fastest encoding, lower CPU usage
+                "-crf", "28",                  // quality (18-28 is reasonable; 28 is higher compression)
+                "-c:a", "aac",                 // encode audio as AAC
+                "-movflags", "+faststart",     // place moov atom at file head
+                "-f", "mp4",                   // output format
                 tempFile.getAbsolutePath()
         );
         pb.redirectErrorStream(true);
@@ -138,7 +138,7 @@ public class VideoRecordingService {
             Process process = pb.start();
             activeRecordings.put(cameraId, new RecordingTask(process, startTime, tempFile, outputDir));
 
-            // 异步读取 FFmpeg 输出并等待进程结束
+            // Read FFmpeg output asynchronously and wait for process exit
             new Thread(() -> {
                 try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
                     String line;
@@ -151,7 +151,7 @@ public class VideoRecordingService {
                     int exitCode = process.waitFor();
                     activeRecordings.remove(cameraId);
                     if (tempFile.exists() && tempFile.length() > 0) {
-                        // 无论退出码如何，只要文件有内容就重命名保存
+                        // Rename and save whenever the file has content, regardless of exit code
                         renameToFinal(tempFile, outputDir, startTime);
                     } else {
                         log.warn("Recording exited abnormally (exitCode={}, fileSize={}): {}",
@@ -172,11 +172,11 @@ public class VideoRecordingService {
     }
 
     /**
-     * 根据实际录制时长重命名临时文件为最终文件名
+     * Rename temp file to final filename based on actual recording duration.
      */
     private void renameToFinal(File tempFile, File outputDir, LocalDateTime startTime) {
         long durationMs = java.time.Duration.between(startTime, LocalDateTime.now()).toMillis();
-        long durationSec = Math.max(1, durationMs / 1000); // 至少1秒
+        long durationSec = Math.max(1, durationMs / 1000); // at least 1 second
         LocalDateTime endTime = startTime.plusSeconds(durationSec);
         String startTimeStr = startTime.format(TIME_FMT);
         String endTimeStr = endTime.format(TIME_FMT);
@@ -190,16 +190,16 @@ public class VideoRecordingService {
     }
 
     /**
-     * 停止指定摄像头的录制
+     * Stop recording for the specified camera.
      */
     public void stopRecording(Integer cameraId) {
         RecordingTask task = activeRecordings.remove(cameraId);
         if (task == null) return;
 
-        // 如果进程还在运行，先停止它
+        // Stop the process if still running
         if (task.process.isAlive()) {
-            task.process.destroy(); // 发送 SIGTERM，FFmpeg 会自动保存已录制部分
-            // 等待进程结束，确保 FFmpeg 将缓冲区写入文件
+            task.process.destroy(); // send SIGTERM; FFmpeg saves recorded portion
+            // Wait for process exit so FFmpeg flushes buffers to disk
             try {
                 task.process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
             } catch (InterruptedException ignored) {
@@ -207,7 +207,7 @@ public class VideoRecordingService {
             }
         }
 
-        // 无论进程是否还在运行，只要临时文件存在就重命名
+        // Rename temp file if it exists, whether or not the process is still running
         if (task.tempFile.exists() && task.tempFile.length() > 0) {
             renameToFinal(task.tempFile, task.outputDir, task.startTime);
         }
@@ -215,16 +215,16 @@ public class VideoRecordingService {
     }
 
     /**
-     * 停止所有录制（等待进程结束以确保文件保存完整）
+     * Stop all recordings (wait for processes to finish so files are fully written).
      */
     public void stopAllRecordings() {
-        // 先停止所有运行中的进程
+        // Stop all running processes first
         activeRecordings.forEach((cameraId, task) -> {
             if (task.process.isAlive()) {
                 task.process.destroy();
             }
         });
-        // 等待所有进程结束，确保 FFmpeg 将缓冲区写入文件
+        // Wait for all processes to finish so FFmpeg flushes buffers to disk
         activeRecordings.forEach((cameraId, task) -> {
             try {
                 task.process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
@@ -232,7 +232,7 @@ public class VideoRecordingService {
                 Thread.currentThread().interrupt();
             }
         });
-        // 重命名所有临时文件
+        // Rename all temp files
         activeRecordings.forEach((cameraId, task) -> {
             if (task.tempFile.exists() && task.tempFile.length() > 0) {
                 renameToFinal(task.tempFile, task.outputDir, task.startTime);
@@ -243,7 +243,7 @@ public class VideoRecordingService {
     }
 
     /**
-     * 获取指定摄像头指定日期的录像文件列表（排除正在录制的临时文件）
+     * List recording files for a camera on a given date (excludes in-progress temp files).
      */
     public File[] getRecordings(Integer cameraId, String date) {
         String storagePath = recordingProperties.getStoragePath();
@@ -256,7 +256,7 @@ public class VideoRecordingService {
     }
 
     /**
-     * 获取指定摄像头指定日期指定文件的录像文件
+     * Get a specific recording file for a camera, date, and filename.
      */
     public File getRecordingFile(Integer cameraId, String date, String fileName) {
         String storagePath = recordingProperties.getStoragePath();
@@ -268,8 +268,8 @@ public class VideoRecordingService {
     }
 
     /**
-     * 删除指定摄像头指定日期指定文件的录像
-     * @return true 删除成功，false 文件不存在
+     * Delete a specific recording file.
+     * @return true if deleted, false if file does not exist
      */
     public boolean deleteRecording(Integer cameraId, String date, String fileName) {
         File file = getRecordingFile(cameraId, date, fileName);

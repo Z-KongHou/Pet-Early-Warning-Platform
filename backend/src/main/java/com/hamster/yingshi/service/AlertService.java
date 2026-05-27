@@ -29,7 +29,7 @@ public class AlertService {
                 .eq(Alert::getIsDeleted, 0)
         );
         if (alert == null) {
-            throw new BusinessException(ErrorCode.ALERT_NOT_FOUND, "预警不存在");
+            throw new BusinessException(ErrorCode.ALERT_NOT_FOUND, "Alert not found");
         }
         return alert;
     }

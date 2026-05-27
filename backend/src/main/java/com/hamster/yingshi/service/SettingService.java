@@ -20,7 +20,7 @@ public class SettingService {
             new LambdaQueryWrapper<Setting>().eq(Setting::getKeyName, keyName)
         );
         if (setting == null) {
-            throw new BusinessException(ErrorCode.SETTING_NOT_FOUND, "配置项不存在");
+            throw new BusinessException(ErrorCode.SETTING_NOT_FOUND, "Setting not found");
         }
         return setting;
     }

@@ -29,7 +29,7 @@ public class HamsterService {
                 .eq(Hamster::getIsDeleted, 0)
         );
         if (hamster == null) {
-            throw new BusinessException(ErrorCode.HAMSTER_NOT_FOUND, "仓鼠不存在");
+            throw new BusinessException(ErrorCode.HAMSTER_NOT_FOUND, "Hamster not found");
         }
         return hamster;
     }

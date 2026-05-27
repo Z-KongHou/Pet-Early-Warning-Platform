@@ -150,12 +150,12 @@ public class CameraController {
         cameraService.checkAccess(userId, id);
         Camera camera = cameraService.findById(id);
 
-        // 从完整路径中提取 /** 部分，如 index.m3u8 或 12345.ts
+        // Extract /** suffix from full path, e.g. index.m3u8 or 12345.ts
         String fullPath = request.getRequestURI();
         String prefix = "/api/cameras/" + id + "/stream/proxy/";
         String suffix = fullPath.substring(fullPath.indexOf(prefix) + prefix.length());
 
-        // 获取萤石直播地址
+        // Fetch Ezviz live stream URL
         String streamUrl;
         try {
             streamUrl = ezvizService.getLiveStreamUrlWithRetry(camera);
@@ -181,18 +181,18 @@ public class CameraController {
                     URI.create(targetUrl), byte[].class);
 
             HttpHeaders headers = new HttpHeaders();
-            // m3u8 需要改写其中的相对 URL 指向代理
+            // Rewrite relative URLs in m3u8 to point to the proxy
             if (suffix.endsWith(".m3u8") || suffix.contains(".m3u8")) {
                 headers.setContentType(MediaType.parseMediaType("application/vnd.apple.mpegurl"));
                 String m3u8 = new String(remoteResponse.getBody(), java.nio.charset.StandardCharsets.UTF_8);
-                // 将相对路径的 .ts 引用改写为代理路径
+                // Rewrite relative .ts references to proxy paths
                 m3u8 = m3u8.replaceAll("((?!https?://)[^\\s]+?\\.ts)", prefix + "$1");
                 return ResponseEntity.ok()
                         .headers(headers)
                         .cacheControl(CacheControl.noCache())
                         .body(m3u8.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             } else {
-                // .ts 视频分片直接透传
+                // Pass through .ts video segments directly
                 headers.setContentType(MediaType.parseMediaType("video/mp2t"));
                 headers.setContentLength(remoteResponse.getBody() != null ? remoteResponse.getBody().length : 0);
                 return ResponseEntity.ok()
@@ -202,7 +202,7 @@ public class CameraController {
             }
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                    .body(("代理请求失败: " + e.getMessage()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    .body(("Proxy request failed: " + e.getMessage()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 
@@ -283,7 +283,7 @@ public class CameraController {
         for (File file : files) {
             Map<String, String> item = new HashMap<>();
             String fileName = file.getName();
-            // 文件名格式: HH-mm-ss-HH-mm-ss.mp4
+            // Filename format: HH-mm-ss-HH-mm-ss.mp4
             String baseName = fileName.replace(".mp4", "");
             String[] parts = baseName.split("-");
             if (parts.length >= 6) {
@@ -294,7 +294,7 @@ public class CameraController {
             item.put("fileSize", String.valueOf(file.length()));
             result.add(item);
         }
-        // 按开始时间倒序排序
+        // Sort by start time descending
         result.sort((a, b) -> b.getOrDefault("startTime", "").compareTo(a.getOrDefault("startTime", "")));
         return Result.success(result);
     }
@@ -319,7 +319,7 @@ public class CameraController {
         response.setHeader("Accept-Ranges", "bytes");
         response.setHeader("Content-Disposition", "inline; filename=\"" + file + "\"");
 
-        // 处理 Range 请求（HTML5 video 需要）
+        // Handle Range requests (required by HTML5 video)
         String rangeHeader = request.getHeader("Range");
         if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
             String rangeSpec = rangeHeader.substring(6);
@@ -348,7 +348,7 @@ public class CameraController {
             } catch (Exception ignored) {
             }
         } else {
-            // 无 Range 请求，返回完整文件
+            // No Range header; return full file
             response.setHeader("Content-Length", String.valueOf(fileLength));
             try (FileInputStream fis = new FileInputStream(videoFile);
                  OutputStream os = response.getOutputStream()) {
@@ -372,7 +372,7 @@ public class CameraController {
         boolean deleted = videoRecordingService.deleteRecording(id, date, file);
         if (!deleted) {
             throw new com.hamster.yingshi.common.BusinessException(
-                    com.hamster.yingshi.common.ErrorCode.FILE_NOT_FOUND, "录像文件不存在");
+                    com.hamster.yingshi.common.ErrorCode.FILE_NOT_FOUND, "Recording file not found");
         }
         return Result.success();
     }
@@ -386,12 +386,12 @@ public class CameraController {
         Boolean enabled = body.get("enabled");
         if (enabled == null) {
             throw new com.hamster.yingshi.common.BusinessException(
-                    com.hamster.yingshi.common.ErrorCode.PARAM_ERROR, "enabled 参数不能为空");
+                    com.hamster.yingshi.common.ErrorCode.PARAM_ERROR, "enabled parameter is required");
         }
         Camera camera = cameraService.findById(id);
         camera.setRecordingEnabled(enabled ? 1 : 0);
         cameraService.update(id, camera);
-        // 如果关闭录像，停止该摄像头正在录制的进程
+        // When disabling recording, stop any active recording process for this camera
         if (!enabled) {
             videoRecordingService.stopRecording(id);
         }

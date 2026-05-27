@@ -36,7 +36,7 @@ public class CameraService {
                 .eq(Camera::getIsDeleted, 0)
         );
         if (camera == null) {
-            throw new BusinessException(ErrorCode.CAMERA_NOT_FOUND, "摄像头不存在");
+            throw new BusinessException(ErrorCode.CAMERA_NOT_FOUND, "Camera not found");
         }
         return camera;
     }
@@ -123,7 +123,7 @@ public class CameraService {
 
     public void checkAccess(Integer userId, Integer cameraId) {
         if (!hasAccess(userId, cameraId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "无权限访问该摄像头");
+            throw new BusinessException(ErrorCode.FORBIDDEN, "No permission to access this camera");
         }
     }
 }

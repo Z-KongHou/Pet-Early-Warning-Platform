@@ -20,7 +20,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (user == null) {
-            throw new UsernameNotFoundException("用户不存在: " + username);
+            throw new UsernameNotFoundException("User not found: " + username);
         }
         return UserDetailsImpl.build(user);
     }
@@ -28,7 +28,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     public UserDetails loadUserById(Integer id) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, id));
         if (user == null) {
-            throw new UsernameNotFoundException("用户不存在");
+            throw new UsernameNotFoundException("User not found");
         }
         return UserDetailsImpl.build(user);
     }

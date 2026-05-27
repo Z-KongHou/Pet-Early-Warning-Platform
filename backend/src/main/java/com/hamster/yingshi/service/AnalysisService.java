@@ -39,13 +39,13 @@ public class AnalysisService {
     }
 
     private String buildPrompt(String imageUrl) {
-        return "请分析这张仓鼠的图片，评估其活动量状态。\n" +
-                "请以JSON格式返回，包含以下字段：\n" +
-                "- score: 活动量评分(0-100的整数)\n" +
-                "- status: 活动状态(low/normal/high)\n" +
-                "- description: 活动描述(中文)\n" +
-                "- analysis: 详细分析(中文)\n" +
-                "注意：只返回JSON，不要其他文字。";
+        return "Analyze this hamster image and assess its activity level.\n" +
+                "Return JSON only with the following fields:\n" +
+                "- score: activity score (integer 0-100)\n" +
+                "- status: activity status (low/normal/high)\n" +
+                "- description: activity description (in English)\n" +
+                "- analysis: detailed analysis (in English)\n" +
+                "Note: return JSON only, no other text.";
     }
 
     private String callAiApi(String prompt) throws JsonProcessingException {
@@ -54,7 +54,7 @@ public class AnalysisService {
         headers.set("Authorization", "Bearer " + aiProperties.getApiKey());
 
         List<AiChatRequest.Message> messages = new ArrayList<>();
-        messages.add(new AiChatRequest.Message("system", "你是一个专业的宠物健康分析助手。"));
+        messages.add(new AiChatRequest.Message("system", "You are a professional pet health analysis assistant."));
         messages.add(new AiChatRequest.Message("user", prompt));
 
         AiChatRequest request = new AiChatRequest(aiProperties.getModel(), messages);
@@ -72,7 +72,7 @@ public class AnalysisService {
         if (aiResponse.getChoices() != null && !aiResponse.getChoices().isEmpty()) {
             return aiResponse.getChoices().get(0).getMessage().getContent();
         }
-        throw new RuntimeException("AI响应为空");
+        throw new RuntimeException("AI response is empty");
     }
 
     private AnalysisResult parseAiResponse(String aiResponse, Integer cameraId) {
@@ -109,13 +109,13 @@ public class AnalysisService {
 
         if (score < 30) {
             status = "low";
-            description = "仓鼠活动较少，建议关注";
+            description = "Hamster activity is low; monitoring recommended";
         } else if (score > 80) {
             status = "high";
-            description = "仓鼠活动频繁，非常健康";
+            description = "Hamster is very active and appears healthy";
         } else {
             status = "normal";
-            description = "仓鼠活动正常";
+            description = "Hamster activity is normal";
         }
 
         return new AnalysisResult(
@@ -123,7 +123,7 @@ public class AnalysisService {
                 score,
                 status,
                 description,
-                "注意：这是备用分析结果，AI接口调用失败。请检查网络连接和API配置。"
+                "Note: this is a fallback result because the AI API call failed. Check network connectivity and API configuration."
         );
     }
 

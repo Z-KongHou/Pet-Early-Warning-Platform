@@ -27,10 +27,10 @@ public class AuthController {
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest request) {
         User user = userService.findByUsername(request.getUsername());
         if (user == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Invalid username or password");
         }
         if (!userService.validatePassword(user, request.getPassword())) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Invalid username or password");
         }
         String token = jwtUtils.generateToken(user.getId(), user.getUsername());
         Map<String, Object> data = new HashMap<>();

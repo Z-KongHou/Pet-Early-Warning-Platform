@@ -23,7 +23,7 @@ public class GlobalExceptionHandler {
         String msg = e.getBindingResult().getFieldErrors().stream()
                 .map(err -> err.getField() + ": " + err.getDefaultMessage())
                 .findFirst()
-                .orElse("参数错误");
+                .orElse("Invalid parameter");
         return Result.error(ErrorCode.PARAM_ERROR, msg, resolveRequestId(request));
     }
 
@@ -35,6 +35,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e, HttpServletRequest request) {
         e.printStackTrace();
-        return Result.error(500, "服务器内部错误", resolveRequestId(request));
+        return Result.error(500, "Internal server error", resolveRequestId(request));
     }
 }

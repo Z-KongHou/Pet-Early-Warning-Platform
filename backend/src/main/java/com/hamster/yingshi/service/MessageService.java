@@ -28,7 +28,7 @@ public class MessageService {
                 .eq(Message::getIsDeleted, 0)
         );
         if (message == null) {
-            throw new BusinessException(ErrorCode.MESSAGE_NOT_FOUND, "站内信不存在");
+            throw new BusinessException(ErrorCode.MESSAGE_NOT_FOUND, "Message not found");
         }
         return message;
     }
