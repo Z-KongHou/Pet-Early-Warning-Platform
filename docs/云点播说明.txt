@@ -1,0 +1,526 @@
+================================================================
+萤石云点播产品说明文档
+================================================================
+更新时间：2026.06.02
+
+================================================================
+一、概述
+================================================================
+
+云点播是对云录制产品的补充，云录制2.0是PS录像云端存储，而云点播产品是提供标准文件mp4/m3u8文件的云端存储。云录制2.0结合云点播的功能，可以实现：视频录制+点播加速、视频录制+视频剪辑等功能的开发。
+
+云点播（VOD）是集音视频管理、处理和分发播放于一体的一站式解决方案。支持通过云录制2.0将海量设备录像上传至云端，也支持通过控制台将音视频文件上传至点播平台。
+
+核心功能：
+- 媒体管理：支持上传、管理音视频文件
+- 媒体处理：提供视频转码、特效、剪辑等媒体处理功能
+- 分发播放：结合多供应商CDN网络，实现全球范围内的安全高效分发服务
+
+================================================================
+二、控制台上传媒资文件
+================================================================
+
+开发者可以通过控制台、API接口、云录制/事件云存储转封装等方式，上传文件到云点播空间里。
+
+2.1 上传音频、视频
+
+1. 进入控制台
+   打开开放平台官网：https://open.ys7.com/console/cloudondemand.html
+   打开右上角控制台，选择左侧目录，选择云存储-云点播
+
+2. 点击上传
+   点击右上角上传，选择本地文件，当前支持mp4、mp3文件上传，控制台最大支持1GB文件上传
+
+3. 上传后操作
+   - 预览：点击视频标题进行预览
+   - 编辑：修改文件名称
+   - 修改封面图：默认会有封面图，也可手动生成或上传
+   - 获取播放/下载链接：控制台可获取，也可通过API接口获取
+
+2.2 上传图片
+
+   点击图片tab，切换到图片列表，操作步骤与视频上传相同。
+
+================================================================
+三、API接口
+================================================================
+
+----------------------------------------------------------------
+3.1 批量获取媒体文件上传地址
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/upload/query
+请求方式: GET
+描述: 获取POST表单形式的上传信息
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  suffix         string    是    尾缀，jpg;mp4;mp3等
+  fileNum        int       是    申请数量，限制1-50
+  fileType       int       是    文件类型：0-图片; 1-视频；2-音频
+  fileChildType  string    是    文件子类型: 00-JPG，01-PNG，02-GIF，06-JPEG，10-mp4，13-M3U8，20-mp3
+  resourceId     string    否    资源ID，文件随机ID，默认8位随机
+  spaceId        long      否    空间id，云点播空间id，不传为默认空间
+
+注意：
+1、上传地址有效期时长：获取的上传地址有效期时长为1个小时
+2、上传的文件大小限制：图片和音频不超过10MB，视频不超过5GB
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": [
+        {
+            "folderNodeId": "c952c98af1924c63a6b11d98ec2ef05a",
+            "storageId": "...",
+            "sourceUrl": "...",
+            "url": "https://av-talk-test.oss-cn-hangzhou.aliyuncs.com",
+            "fields": {
+                "OSSAccessKeyId": "...",
+                "success_action_status": "200",
+                "Signature": "...",
+                "key": "...",
+                "policy": "..."
+            }
+        }
+    ]
+}
+
+----------------------------------------------------------------
+3.2 保存或修改文件元数据
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/info/register
+请求方式: POST
+描述: 媒体文件保存/更新
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body (form-urlencoded):
+  sourceUrl       string    是    文件路径，字符长度不超过256
+  fileType        string    是    文件类型：0-图片 1-视频 2-音频 3-文档 4-其他
+  fileSize        string    否    文件大小，默认0
+  fileMd5         string    否    文件md5，50位数字字母
+  duration        long      否    视频时长，单位秒
+  fileName        string    是    文件名称，256位
+  deviceSerial    string    否    设备序列号,60位
+  channelNo       string    否    通道号
+  fileChildType   string    是    文件子类型：10-mp4, 20-mp3
+  uploadStatus    int       否    上传状态：0-上传中 1-已完成 2-上传失败
+  fileNodeId      string    否    文件节点ID，用于修改文件节点
+  autoCoverPic    boolean   否    自动获取封面图，默认false
+  spaceName       string    否    空间名称
+  spaceId         long      否    空间id，该入参优先级最高
+  sourceType      int       是    来源方式，固定传4，表示接口上传
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": {"fileNodeId": "xMKnxvrJ"}
+}
+
+----------------------------------------------------------------
+3.3 文件元数据搜索
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/listById
+请求方式: POST
+描述: 文件元数据搜索
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body (form-urlencoded):
+  pageSize        int       否    每页大小，1-50，默认10
+  lastId          int       否    最后id，默认0
+  sortRule        int       否    0-倒序 1-正序 默认为0-倒序
+  fileName        string    否    文件名搜索,128
+  spaceIds        string    是    空间id，支持多个空间查询，用逗号分割
+  fileType        string    是    文件类型：0-图片 1-视频 2-音频 3-文档 4-其他
+  fileChildType   string    是    文件类型：00-JPG，01-PNG，02-GIF，10-mp4，13-M3U8，20-mp3
+  startTime       string    是    开始时间：2024-07-16 15:43:32
+  endTime         string    是    结束时间：2024-07-16 15:43:32
+  folderNodes     string    否    文件节点
+  tagId           string    否    标签id
+
+返回数据字段:
+  result[]              文件列表
+  result[].folderNode  文件节点ID
+  result[].fileName    文件名
+  result[].fileSize    文件大小
+  result[].fileType    文件类型
+  result[].fileChildType  文件子类型
+  result[].duration    时长
+  result[].coverPic    封面图
+  result[].urls        文件链接
+  result[].spaceId     空间ID
+  lastId               上一页最后id
+  pageSize             分页大小
+  hasNext              是否有下一页
+
+----------------------------------------------------------------
+3.4 批量文件列表信息查询
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/files
+请求方式: GET
+
+请求Query:
+  fileNodeIds    array<string>    文件节点，上限50个
+  spaceName      string            空间名称
+  spaceId        long              空间id，该入参优先级最高
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": [
+        {
+            "folderNode": "VQoCcozl",
+            "fileName": "合成视频1",
+            "totalSize": 373937,
+            "fileType": 1,
+            "fileChildType": "10",
+            "duration": 3,
+            "urls": {"VQoCcozl": "https://..."}
+        }
+    ]
+}
+
+----------------------------------------------------------------
+3.5 删除文件
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file
+请求方式: DELETE
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  fileNodeId     string    是    文件节点id
+
+----------------------------------------------------------------
+3.6 批量删除文件
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/infos/delete
+请求方式: DELETE
+
+请求Body:
+  fileNodeIds    string    是    文件节点id，使用","分隔，上限50个
+
+----------------------------------------------------------------
+3.7 迁移视频文件
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/transfer
+请求方式: POST
+
+请求Body:
+  newSpaceId         string    是    新文件云点播空间id
+  fileNodeId         string    是    文件节点ID，限制32位数字字母
+  whetherRemainOrigin boolean  是    是否保留原始文件
+  fileName           string    否    文件名称（复制文件时可以传递）
+
+注意：目前限制仅能迁移fileChildType为10的mp4文件
+
+================================================================
+四、获取文件地址
+================================================================
+
+----------------------------------------------------------------
+4.1 获取文件地址（支持播放/下载）
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/downloadurl
+请求方式: GET
+
+请求Query:
+  fileNodeIds      string    是    文件节点ID列表，通过英文逗号隔开，最多50个
+  expireSeconds    long      否    过期时间，1-86400秒，默认1800
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": [
+        {
+            "urls": {"j1jomEDi": "https://openrecord.ys7.com/..."},
+            "expireTime": 1750224347009
+        }
+    ]
+}
+
+================================================================
+五、云点播转封装录像
+================================================================
+
+一、对接方案
+
+萤石云提供Http接口和Webhook云信令消息异步数据回调产品，接入云录制2.0产品。该接口主要是将已生成的录像文件（事件云存储/云录制2.0里的原始PS录像）转成mp4/m3u8。若开发者需要在录制时自动转成mp4/m3u8，建议使用后处理模板。
+
+二、接入指南
+
+步骤1：
+- 注册萤石云开放平台
+- 获取AK、SK等关键接口对接配置信息
+- 进入设备管理器接入设备，开通云信令，订阅ys.open.cloud消息
+- 设备已经开通云存储功能或使用云录制2.0产生过录像
+
+步骤2：
+使用云点播产品中的转封装接口，将云端录像转换至标准流进行浏览与播放。
+
+----------------------------------------------------------------
+5.1 创建转封装录像任务
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/media/trans/code
+请求方式: POST
+
+请求Header:
+  accessToken      string    是    萤石开放API访问令牌
+  deviceSerial     string    是    设备序列号
+  localIndex       string    是    设备通道号
+
+请求Body:
+  busType          string    是    1-事件云存储; 7-云录制2.0录像; 71-云录制HLS
+  format           string    是    转封装格式：HLS 或 MP4（原始录像为HLS时不允许选HLS）
+  validateCode     string    否    设备验证码，视频加密时必填
+  spaceId          long      否    空间ID，type为7时必填
+  startTime        string    是    开始时间：yyyy-MM-dd HH:mm:ss
+  endTime          string    是    结束时间：yyyy-MM-dd HH:mm:ss，不超过48小时，不小于10秒
+  resultSpaceId    long      否    输出结果的空间id
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": {"taskId": "9c7802d2f9bf463794e2c0d"}
+}
+
+----------------------------------------------------------------
+5.2 查询任务详情
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/task
+请求方式: GET
+
+请求Query:
+  taskId    string    是    任务ID
+
+返回字段:
+  taskId           任务ID
+  projectId        空间ID
+  deviceSerial     设备序列号
+  channelNo        通道号
+  taskType         任务类型：8-视频转码
+  taskSubType      任务子类型：80-PS->MP4, 81-PS->HLS, 82-HLS->MP4
+  taskStatus       任务状态：0-已完成, 1-排队中, 2-进行中, 3-已结束, 4-异常结束, 5-暂停中, 6-已取消, 7-未开始
+  startTime        开始时间
+  endTime          结束时间
+  progressRate     进度
+  completeRate     完成率
+  errorCode        错误码
+  errorMsg         错误信息
+
+----------------------------------------------------------------
+5.3 获取标准录像地址
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/file/address/hls
+请求方式: POST
+
+请求Header:
+  accessToken      string    是    萤石开放API访问令牌
+  deviceSerial     string    是    设备序列号
+  localIndex       string    是    设备通道号
+
+请求Body:
+  startTime        string    是    开始时间：yyyy-MM-dd HH:mm:ss
+  endTime          string    是    结束时间：yyyy-MM-dd HH:mm:ss
+  format           string    是    转码后的文件格式：MP4/HLS
+  expireSeconds    long      否    过期时间，默认1800秒
+  spaceId          long      否    空间ID，不传默认为云点播空间
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": [
+        {
+            "startTime": "2024-12-17 14:52:02",
+            "stopTime": "2024-12-17 14:54:02",
+            "expireTime": "2024-12-19 10:37:45",
+            "hlsAddress": "https://...",
+            "format": "HLS"
+        }
+    ]
+}
+
+----------------------------------------------------------------
+5.4 分页查询云点播任务详情
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/tasks
+请求方式: GET
+
+请求Query:
+  pageStart     int       否    页码，缺省值0
+  pageSize      int       否    分页大小，1-20，缺省值10
+  startTime     string    否    查询起始时间，格式：YYYYMMDDhhmmss
+  endTime       string    否    查询结束时间，格式：YYYYMMDDhhmmss，不允许跨天
+  taskType      int       是    7-视频剪辑; 8-转封装
+
+================================================================
+六、视频剪辑
+================================================================
+
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/convert
+请求方式: POST
+描述: 对云录制产生的云端视频文件进行剪切/合并的处理
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body (JSON):
+  deviceSerial      string    是    设备序列号
+  localIndex        int       是    通道号
+  spaceId           long      否    录像空间id
+  validateCode      string    否    录像解密密钥
+  fileName          string    是    剪辑合成后的文件名称
+  resultSpaceId     string    否    输出结果的空间id
+
+  timeLine[]        array     是    视频剪辑时间线，合并的时间线不能超过30个
+    type            int       是    参数类型：1-文件, 2-时间区间, 3-云点播文件, 4-云录制HLS录像, 5-云存储录像
+    fileId          string    否    文件id，当type=1和3时必填
+    startTime       string    否    剪辑开始时间，当type=2,4,5时必填，格式：yyyyMMddHHmmss
+    endTime         string    否    剪辑结束时间，当type=2,4,5时必填
+    inputProjectId  string    否    文件来源项目id，当type=1时必传
+    in              float     否    素材入点（秒）
+    out             float     否    素材出点（秒）
+    timeLineIn      float     否    素材片段相对于时间线的入点（秒）
+    timeLineOut     float     否    素材片段相对于时间线的出点（秒）
+    speed           float     否    视频素材速率，0.1~100
+    trackType       string    否    轨道类型：video/GlobalImage/Image
+    effects[]       array     否    效果列表
+      type          string    否    效果类型：Transition(转场)/Volume(音量)/DeWatermark(模糊)
+      subType       string    否    转场子类型
+      gain          float     否    音量增益，0-10
+
+转场效果类型:
+  directional     对焦切换
+  windowslice     栅格
+  bowTieVertical  垂直领结
+  bowTieHorizontal 水平领结
+  waterdrop       水滴
+  polka           波点
+  wiperight       向右擦除
+  wipeleft        向左擦除
+  wipedown        向下擦除
+  wipeup          向上擦除
+  circlecrop      圆形遮罩
+  crazyparametricfun 太空波纹
+  kaleidoscope    万花筒
+  dreamyzoom      炫境
+  pinwheel        风车
+  circleopen      椭圆溶解
+  directionalwipe 渐变擦除
+  fade            渐隐
+  luma            对角开幕
+  randomsquares   随机方块
+  rotatescalefade 旋转
+  wind            线形擦除
+
+----------------------------------------------------------------
+6.1 查询剪辑任务文件
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/cloud/vod/task/files/{taskId}
+请求方式: GET
+
+请求Query:
+  expireSeconds    long      否    下载链接有效期，默认1800，范围60-604800
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": [
+        {
+            "folderNode": "r8gzkZPs",
+            "fileName": "录像...",
+            "fileUrl": "https://openrecord.ys7.com/...",
+            "coverPic": "...",
+            "coverPicUrl": "https://...",
+            "startTime": "2025-04-02 19:32:58",
+            "stopTime": "2025-04-02 19:37:59",
+            "fileSize": 19454699
+        }
+    ]
+}
+
+================================================================
+七、视频封面图
+================================================================
+
+----------------------------------------------------------------
+7.1 获取视频封面图
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/cover/pic/get
+请求方式: POST
+
+请求Query:
+  fileNodeId    string    是    文件ID（云点播填云点播文件ID，云录制填云录制文件ID）
+  timePoint     long      否    封面图片时间点（毫秒），默认0
+  type          int       是    文件类型：1-云点播 2-云录制
+  projectId     string    是    项目ID，type为2时必传
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": {"taskId": "xxx"}
+}
+
+----------------------------------------------------------------
+7.2 保存视频封面图
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/open/vod/cover/pic/save
+请求方式: POST
+
+请求Body:
+  fileNodeId      string    是    云点播中的文件ID
+  coverPicId      string    否    封面图ID，为空则为重置封面
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功"},
+    "data": {"fileNodeId": "VQoCcozl"}
+}
+
+================================================================
+八、回调消息
+================================================================
+
+前提条件：在消息推送控制台开通消息推送服务，并勾选云录制消息
+消息类型：ys.open.cloud
+
+8.1 视频剪辑结果回调
+  messageType: video_convert
+  body.projectId       项目Id
+  body.taskId          任务id
+  body.deviceSerial    设备序列号
+  body.localIndex      通道号
+  body.totalSize       任务产生文件大小
+  body.totalDuration   任务产生文件时长
+  body.errorCode       返回码
+  body.taskStatus      任务状态
+
+8.2 视频封面图回调
+  messageType: video_cover_pic
+  body.taskId          任务id
+  body.errorCode       返回码
+  body.taskStatus      任务状态
+
+================================================================
+九、常见错误码
+================================================================
+
+状态码    错误码    错误信息
+200      200      操作成功
+404      404      资源不存在
+500      500      服务器异常
+400      400      参数错误
+412      412      前置条件不满足
+200      10002    accessToken过期或异常
+
+================================================================
+十、价格说明
+================================================================
+
+参考：https://open.ys7.com/help/3856

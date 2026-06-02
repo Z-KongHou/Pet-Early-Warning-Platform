@@ -25,6 +25,7 @@ interface VideoPlayerProps {
   mode?: "live" | "playback";
   startTime?: string;
   endTime?: string;
+  customUrl?: string;
   onError?: (msg: string) => void;
   onPlayerReady?: (player: EZUIKitPlayerInstance) => void;
   playerRef?: MutableRefObject<EZUIKitPlayerInstance | null>;
@@ -44,6 +45,7 @@ export function VideoPlayer({
   mode = "live",
   startTime,
   endTime,
+  customUrl,
   onError,
   onPlayerReady,
   playerRef: externalPlayerRef,
@@ -76,10 +78,10 @@ export function VideoPlayer({
         const { width, height } = measureContainer(container);
         container.innerHTML = `<div id="${divId}" style="width:100%;height:100%;"></div>`;
 
-        const ezopenUrl =
-          mode === "playback"
+        const ezopenUrl = customUrl
+          || (mode === "playback"
             ? `ezopen://open.ys7.com/${deviceKey}/${channelNo}.cloud.rec?begin=${startTime}&end=${endTime}`
-            : `ezopen://open.ys7.com/${deviceKey}/${channelNo}.live`;
+            : `ezopen://open.ys7.com/${deviceKey}/${channelNo}.live`);
 
         player = new EZUIKitPlayer({
           id: divId,
@@ -133,7 +135,7 @@ export function VideoPlayer({
         container.innerHTML = "";
       }
     };
-  }, [deviceKey, channelNo, accessToken, mode, startTime, endTime, onError, onPlayerReady, externalPlayerRef]);
+  }, [deviceKey, channelNo, accessToken, mode, startTime, endTime, customUrl, onError, onPlayerReady, externalPlayerRef]);
 
   return (
     <div ref={containerRef} className="h-full w-full overflow-hidden bg-black" />

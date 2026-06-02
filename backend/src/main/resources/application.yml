@@ -8,8 +8,8 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/yingshi_database?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
-    password: 23050929
-
+    password: Gyp20051215
+  
 mybatis-plus:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.hamster.yingshi.entity
@@ -34,9 +34,12 @@ ai:
   api-url: https://open.bigmodel.cn/api/paas/v4/chat/completions
   api-key: d175f7c031b34c869c2e2d454fcf7b90.uELNrBuyS0jiy3ys
   timeout: 30000
+  service-url: http://127.0.0.1:8000
 
 recording:
   enabled: true
   duration-seconds: 300
-  storage-path: ./video
-  ffmpeg-path: ffmpeg
+  space-id: 441218
+  template-id: 3624
+  space-name: "hamster_default"
+  expire-days: 7

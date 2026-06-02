@@ -1,6 +1,9 @@
 package com.hamster.yingshi.service;
 
+import com.hamster.yingshi.common.BusinessException;
+import com.hamster.yingshi.common.ErrorCode;
 import com.hamster.yingshi.config.RecordingProperties;
+import com.hamster.yingshi.dto.ezviz.CloudRecordingDtos.*;
 import com.hamster.yingshi.entity.Camera;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,21 +11,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
-import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class VideoRecordingService {
 
     private static final Logger log = LoggerFactory.getLogger(VideoRecordingService.class);
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH-mm-ss");
+    private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("yyyyMM");
 
     @Autowired
     private RecordingProperties recordingProperties;
@@ -33,27 +32,18 @@ public class VideoRecordingService {
     @Autowired
     private EzvizService ezvizService;
 
-    // Recording task metadata
-    private static class RecordingTask {
-        final Process process;
-        final LocalDateTime startTime;
-        final File tempFile;
-        final File outputDir;
-
-        RecordingTask(Process process, LocalDateTime startTime, File tempFile, File outputDir) {
-            this.process = process;
-            this.startTime = startTime;
-            this.tempFile = tempFile;
-            this.outputDir = outputDir;
-        }
-    }
-
-    // cameraId -> RecordingTask, tracks active recording processes
-    private final Map<Integer, RecordingTask> activeRecordings = new ConcurrentHashMap<>();
+    // cameraId -> oneOffPlanId, tracks active cloud recording plans
+    private final Map<Integer, Long> activePlans = new ConcurrentHashMap<>();
 
     @Scheduled(fixedDelayString = "${recording.duration-seconds:300}000")
     public void recordAllCameras() {
         if (!recordingProperties.isEnabled()) {
+            return;
+        }
+
+        Long spaceId = recordingProperties.getSpaceId();
+        if (spaceId == null) {
+            log.warn("Cloud recording space-id not configured, skip recording");
             return;
         }
 
@@ -67,215 +57,265 @@ public class VideoRecordingService {
 
         for (Camera camera : cameras) {
             try {
-                recordCamera(camera);
+                recordCamera(camera, spaceId);
             } catch (Exception e) {
-                log.error("Failed to record camera {}: {}", camera.getId(), e.getMessage());
+                log.error("Failed to create cloud recording plan for camera {}: {}", camera.getId(), e.getMessage());
             }
         }
     }
 
-    private void recordCamera(Camera camera) {
+    private void recordCamera(Camera camera, Long spaceId) {
         int cameraId = camera.getId();
 
-        // Skip if recording is disabled for this camera
         if (camera.getRecordingEnabled() == null || camera.getRecordingEnabled() != 1) {
             return;
         }
 
+        // Check if there is already an active plan for this camera
+        Long existingPlanId = activePlans.get(cameraId);
+        if (existingPlanId != null) {
+            try {
+                CloudPlanResponse planResp = ezvizService.getOneOffPlan(existingPlanId);
+                if (planResp.getData() != null) {
+                    int status = planResp.getData().getPlanStatus();
+                    // 3=未开始, 4=进行中, 1=创建中
+                    if (status == 1 || status == 3 || status == 4) {
+                        log.debug("Camera {} already has an active cloud plan {}, skip", cameraId, existingPlanId);
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to check existing plan {} for camera {}, will create new one: {}",
+                        existingPlanId, cameraId, e.getMessage());
+            }
+            activePlans.remove(cameraId);
+        }
+
         int duration = recordingProperties.getDurationSeconds();
+        Long templateId = recordingProperties.getTemplateId();
+        String planName = "cam_" + cameraId + "_" + System.currentTimeMillis();
+        String localIndex = camera.getChannelNo() != null ? String.valueOf(camera.getChannelNo()) : "1";
 
-        // Skip if a recording process is already running for this camera
-        RecordingTask existing = activeRecordings.get(cameraId);
-        if (existing != null && existing.process.isAlive()) {
-            log.debug("Camera {} is already recording, skip", cameraId);
-            return;
-        }
-
-        // Fetch live stream URL
-        String streamUrl;
         try {
-            streamUrl = ezvizService.getLiveStreamUrlWithRetry(camera);
+            CloudPlanResponse resp = ezvizService.createOneOffPlan(
+                    spaceId, templateId, planName, camera.getDeviceKey(), localIndex, duration);
+
+            if (resp.getData() != null) {
+                Long planId = resp.getData().getOneOffPlanId();
+                activePlans.put(cameraId, planId);
+                log.info("Cloud recording plan created for camera {}: planId={}, duration={}s",
+                        cameraId, planId, duration);
+            }
         } catch (Exception e) {
-            log.warn("Failed to get live stream URL for camera {}: {}", cameraId, e.getMessage());
+            log.error("Failed to create cloud recording plan for camera {}: {}", cameraId, e.getMessage());
+        }
+    }
+
+    public void stopRecording(Integer cameraId) {
+        Long planId = activePlans.remove(cameraId);
+        if (planId == null) {
+            log.debug("No active cloud plan for camera {}", cameraId);
             return;
         }
-
-        // Build output path: video/{cameraId}/{date}/
-        LocalDateTime startTime = LocalDateTime.now();
-        String dateDir = startTime.format(DATE_FMT);
-        String startTimeStr = startTime.format(TIME_FMT);
-
-        String storagePath = recordingProperties.getStoragePath();
-        File outputDir = new File(storagePath, cameraId + "/" + dateDir);
-        if (!outputDir.exists() && !outputDir.mkdirs()) {
-            log.error("Failed to create recording directory: {}", outputDir.getAbsolutePath());
-            return;
-        }
-
-        // Record to a temp file, then rename based on actual duration when finished
-        File tempFile = new File(outputDir, startTimeStr + "-recording.mp4");
-
-        // Build FFmpeg command (transcode to standard H.264 for MP4 compatibility)
-        String ffmpegPath = recordingProperties.getFfmpegPath();
-        ProcessBuilder pb = new ProcessBuilder(
-                ffmpegPath,
-                "-y",                          // overwrite existing file
-                "-fflags", "+genpts",           // generate PTS timestamps for live stream
-                "-i", streamUrl,               // input stream
-                "-t", String.valueOf(duration), // recording duration (seconds)
-                "-c:v", "libx264",             // transcode to H.264
-                "-preset", "ultrafast",         // fastest encoding, lower CPU usage
-                "-crf", "28",                  // quality (18-28 is reasonable; 28 is higher compression)
-                "-c:a", "aac",                 // encode audio as AAC
-                "-movflags", "+faststart",     // place moov atom at file head
-                "-f", "mp4",                   // output format
-                tempFile.getAbsolutePath()
-        );
-        pb.redirectErrorStream(true);
 
         try {
-            log.info("Started recording camera {}: {} -> {}", cameraId, streamUrl, tempFile.getAbsolutePath());
-            Process process = pb.start();
-            activeRecordings.put(cameraId, new RecordingTask(process, startTime, tempFile, outputDir));
-
-            // Read FFmpeg output asynchronously and wait for process exit
-            new Thread(() -> {
-                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        log.debug("[ffmpeg-{}] {}", cameraId, line);
-                    }
-                } catch (IOException ignored) {
-                }
-                try {
-                    int exitCode = process.waitFor();
-                    activeRecordings.remove(cameraId);
-                    if (tempFile.exists() && tempFile.length() > 0) {
-                        // Rename and save whenever the file has content, regardless of exit code
-                        renameToFinal(tempFile, outputDir, startTime);
-                    } else {
-                        log.warn("Recording exited abnormally (exitCode={}, fileSize={}): {}",
-                                exitCode, tempFile.length(), tempFile.getAbsolutePath());
-                        if (tempFile.exists() && tempFile.length() == 0) {
-                            tempFile.delete();
-                        }
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }, "recorder-" + cameraId).start();
-
-        } catch (IOException e) {
-            log.error("Failed to start FFmpeg: {}", e.getMessage());
-            activeRecordings.remove(cameraId);
+            ezvizService.stopOneOffPlan(planId);
+            log.info("Cloud recording plan stopped for camera {}: planId={}", cameraId, planId);
+        } catch (Exception e) {
+            log.error("Failed to stop cloud plan {} for camera {}: {}", planId, cameraId, e.getMessage());
         }
     }
 
-    /**
-     * Rename temp file to final filename based on actual recording duration.
-     */
-    private void renameToFinal(File tempFile, File outputDir, LocalDateTime startTime) {
-        long durationMs = java.time.Duration.between(startTime, LocalDateTime.now()).toMillis();
-        long durationSec = Math.max(1, durationMs / 1000); // at least 1 second
-        LocalDateTime endTime = startTime.plusSeconds(durationSec);
-        String startTimeStr = startTime.format(TIME_FMT);
-        String endTimeStr = endTime.format(TIME_FMT);
-        String finalName = startTimeStr + "-" + endTimeStr + ".mp4";
-        File finalFile = new File(outputDir, finalName);
-        if (tempFile.renameTo(finalFile)) {
-            log.info("Recording finished: {} ({}KB, duration={}s)", finalFile.getAbsolutePath(), finalFile.length() / 1024, durationSec);
-        } else {
-            log.warn("Failed to rename file: {} -> {}", tempFile.getAbsolutePath(), finalFile.getAbsolutePath());
-        }
-    }
-
-    /**
-     * Stop recording for the specified camera.
-     */
-    public void stopRecording(Integer cameraId) {
-        RecordingTask task = activeRecordings.remove(cameraId);
-        if (task == null) return;
-
-        // Stop the process if still running
-        if (task.process.isAlive()) {
-            task.process.destroy(); // send SIGTERM; FFmpeg saves recorded portion
-            // Wait for process exit so FFmpeg flushes buffers to disk
-            try {
-                task.process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
-            }
-        }
-
-        // Rename temp file if it exists, whether or not the process is still running
-        if (task.tempFile.exists() && task.tempFile.length() > 0) {
-            renameToFinal(task.tempFile, task.outputDir, task.startTime);
-        }
-        log.info("Stopped recording for camera {}", cameraId);
-    }
-
-    /**
-     * Stop all recordings (wait for processes to finish so files are fully written).
-     */
     public void stopAllRecordings() {
-        // Stop all running processes first
-        activeRecordings.forEach((cameraId, task) -> {
-            if (task.process.isAlive()) {
-                task.process.destroy();
-            }
-        });
-        // Wait for all processes to finish so FFmpeg flushes buffers to disk
-        activeRecordings.forEach((cameraId, task) -> {
+        activePlans.forEach((cameraId, planId) -> {
             try {
-                task.process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (InterruptedException ignored) {
-                Thread.currentThread().interrupt();
+                ezvizService.stopOneOffPlan(planId);
+                log.info("Cloud recording plan stopped for camera {}: planId={}", cameraId, planId);
+            } catch (Exception e) {
+                log.error("Failed to stop cloud plan {} for camera {}: {}", planId, cameraId, e.getMessage());
             }
         });
-        // Rename all temp files
-        activeRecordings.forEach((cameraId, task) -> {
-            if (task.tempFile.exists() && task.tempFile.length() > 0) {
-                renameToFinal(task.tempFile, task.outputDir, task.startTime);
+        activePlans.clear();
+        log.info("All cloud recording plans stopped");
+    }
+
+    public List<String> getRecordingCalendar(Integer cameraId, String month) {
+        Camera camera = cameraService.findById(cameraId);
+        Long spaceId = recordingProperties.getSpaceId();
+        if (spaceId == null) {
+            return new ArrayList<>();
+        }
+        String localIndex = camera.getChannelNo() != null ? String.valueOf(camera.getChannelNo()) : "1";
+        return ezvizService.getRecordingCalendar(camera.getDeviceKey(), localIndex, spaceId, month);
+    }
+
+    public List<Map<String, Object>> getRecordings(Integer cameraId, String date) {
+        Camera camera = cameraService.findById(cameraId);
+        Long spaceId = recordingProperties.getSpaceId();
+        if (spaceId == null) {
+            return new ArrayList<>();
+        }
+
+        // 云点播 API 要求时间范围不超过 30 天，查询当天
+        String startTime = date + " 00:00:00";
+        String endTime = date + " 23:59:59";
+
+        List<Map<String, Object>> vodFiles = ezvizService.getVodFileList(spaceId, startTime, endTime);
+
+        String deviceSerial = camera.getDeviceKey();
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> file : vodFiles) {
+            String fileDeviceSerial = (String) file.getOrDefault("deviceSerial", "");
+
+            // 过滤设备：匹配设备序列号，或设备信息为空时也返回
+            if (!fileDeviceSerial.isEmpty() && !fileDeviceSerial.equals(deviceSerial)) {
+                continue;
             }
+
+            // 获取文件的时间信息（可能是时间戳或格式化字符串）
+            Object startTimeObj = file.get("startTime");
+            Object stopTimeObj = file.get("stopTime");
+
+            long fileStartMillis = toMillis(startTimeObj);
+            long fileEndMillis = toMillis(stopTimeObj);
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("fileId", file.getOrDefault("fileNodeId", ""));
+            // 格式化为可读时间
+            item.put("startTime", formatMillis(fileStartMillis > 0 ? fileStartMillis : System.currentTimeMillis()));
+            item.put("endTime", formatMillis(fileEndMillis > 0 ? fileEndMillis : System.currentTimeMillis()));
+            item.put("fileSize", file.getOrDefault("fileSize", 0));
+            // 从时间差计算时长（毫秒），不依赖 duration 字段
+            long durationMillis = (fileStartMillis > 0 && fileEndMillis > 0) ? (fileEndMillis - fileStartMillis) : 0;
+            item.put("videoLong", durationMillis);
+            item.put("downloadPath", file.getOrDefault("playUrl", ""));
+            item.put("coverPic", file.getOrDefault("coverPic", ""));
+            item.put("coverPicUrl", file.getOrDefault("coverPicUrl", ""));
+            item.put("deviceSerial", fileDeviceSerial);
+            item.put("channelNo", String.valueOf(file.getOrDefault("channelNo", 0)));
+            item.put("fileName", file.getOrDefault("fileName", ""));
+            result.add(item);
+        }
+
+        result.sort((a, b) -> {
+            String sa = (String) a.getOrDefault("startTime", "");
+            String sb = (String) b.getOrDefault("startTime", "");
+            return sb.compareTo(sa);
         });
-        activeRecordings.clear();
-        log.info("Stopped all recordings");
+
+        return result;
     }
 
     /**
-     * List recording files for a camera on a given date (excludes in-progress temp files).
+     * 将各种时间格式转换为毫秒时间戳
      */
-    public File[] getRecordings(Integer cameraId, String date) {
-        String storagePath = recordingProperties.getStoragePath();
-        File dateDir = new File(storagePath, cameraId + "/" + date);
-        if (!dateDir.exists() || !dateDir.isDirectory()) {
-            return new File[0];
+    private long toMillis(Object timeObj) {
+        if (timeObj == null) return 0;
+        if (timeObj instanceof Number) {
+            long val = ((Number) timeObj).longValue();
+            // 如果是秒级时间戳，转换为毫秒
+            if (val < 10000000000L) {
+                return val * 1000;
+            }
+            return val;
         }
-        File[] files = dateDir.listFiles((dir, name) -> name.endsWith(".mp4") && !name.endsWith("-recording.mp4"));
-        return files != null ? files : new File[0];
+        String timeStr = timeObj.toString().trim();
+        if (timeStr.isEmpty()) return 0;
+        try {
+            return Long.parseLong(timeStr);
+        } catch (NumberFormatException e) {
+            return parseDateToMillis(timeStr);
+        }
     }
 
     /**
-     * Get a specific recording file for a camera, date, and filename.
+     * 解析日期字符串为毫秒时间戳
      */
-    public File getRecordingFile(Integer cameraId, String date, String fileName) {
-        String storagePath = recordingProperties.getStoragePath();
-        File file = new File(storagePath, cameraId + "/" + date + "/" + fileName);
-        if (file.exists() && file.getName().endsWith(".mp4")) {
-            return file;
+    private long parseDateToMillis(String dateStr) {
+        try {
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.parse(dateStr,
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            return ldt.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception e) {
+            return 0;
         }
-        return null;
     }
 
     /**
-     * Delete a specific recording file.
-     * @return true if deleted, false if file does not exist
+     * 将毫秒时间戳格式化为 yyyy-MM-dd HH:mm:ss
      */
-    public boolean deleteRecording(Integer cameraId, String date, String fileName) {
-        File file = getRecordingFile(cameraId, date, fileName);
-        if (file == null) {
-            return false;
+    private String formatMillis(long millis) {
+        try {
+            java.time.LocalDateTime ldt = java.time.LocalDateTime.ofInstant(
+                    java.time.Instant.ofEpochMilli(millis), java.time.ZoneId.systemDefault());
+            return ldt.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        } catch (Exception e) {
+            return String.valueOf(millis);
         }
-        return file.delete();
+    }
+
+    public Map<String, Object> getCloudPlayAddress(Integer cameraId, String startTime, String endTime) {
+        Camera camera = cameraService.findById(cameraId);
+        Long spaceId = recordingProperties.getSpaceId();
+        if (spaceId == null) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR, "Cloud recording space not configured");
+        }
+
+        // 先从云点播获取录像文件列表，找到对应时间段的文件
+        List<Map<String, Object>> vodFiles = ezvizService.getVodFileList(spaceId, startTime, endTime);
+        if (!vodFiles.isEmpty()) {
+            // 找到匹配的文件，获取其播放地址
+            Map<String, Object> file = vodFiles.get(0);
+            String fileNodeId = (String) file.getOrDefault("fileNodeId", "");
+            String playUrl = (String) file.getOrDefault("playUrl", "");
+
+            // 如果没有 playUrl，通过 downloadurl 接口获取
+            if (playUrl.isEmpty() && !fileNodeId.isEmpty()) {
+                playUrl = ezvizService.getVodFileDownloadUrl(spaceId, fileNodeId, 3600);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("url", playUrl);
+            result.put("deviceKey", camera.getDeviceKey());
+            result.put("channelNo", camera.getChannelNo() != null ? camera.getChannelNo() : 1);
+            result.put("accessToken", camera.getAccessToken());
+            result.put("playType", "vod");  // 标记为云点播播放
+            return result;
+        }
+
+        // 降级：使用云录制 ezopen:// 播放
+        String localIndex = camera.getChannelNo() != null ? String.valueOf(camera.getChannelNo()) : "1";
+        CloudPlayAddressResponse.PlayData playData = ezvizService.getCloudPlaybackAddress(
+                camera.getDeviceKey(), localIndex, spaceId, startTime, endTime);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("url", playData.getUrl());
+        result.put("deviceKey", camera.getDeviceKey());
+        result.put("channelNo", camera.getChannelNo() != null ? camera.getChannelNo() : 1);
+        result.put("accessToken", camera.getAccessToken());
+        result.put("playType", "ezopen");
+        return result;
+    }
+
+    public void deleteRecording(Integer cameraId, String startTime, String endTime) {
+        Camera camera = cameraService.findById(cameraId);
+        Long spaceId = recordingProperties.getSpaceId();
+        if (spaceId == null) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR, "Cloud recording space not configured");
+        }
+
+        String localIndex = camera.getChannelNo() != null ? String.valueOf(camera.getChannelNo()) : "1";
+        ezvizService.deleteCloudRecording(camera.getDeviceKey(), localIndex, spaceId, startTime, endTime);
+    }
+
+    private String formatCloudTime(String raw) {
+        if (raw == null || raw.isEmpty()) return raw;
+        // Input format: "20240124115700" -> "2024-01-24 11:57:00"
+        if (raw.length() == 14 && !raw.contains("-")) {
+            return raw.substring(0, 4) + "-" + raw.substring(4, 6) + "-" + raw.substring(6, 8)
+                    + " " + raw.substring(8, 10) + ":" + raw.substring(10, 12) + ":" + raw.substring(12, 14);
+        }
+        return raw;
     }
 }

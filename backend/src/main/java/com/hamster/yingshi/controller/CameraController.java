@@ -16,14 +16,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.RandomAccessFile;
-
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
-import java.nio.file.Files;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -272,131 +267,45 @@ public class CameraController {
         return Result.success(data);
     }
 
-    @GetMapping("/{id}/recordings/local")
-    public Result<List<Map<String, String>>> getLocalRecordings(
+    @GetMapping("/{id}/recordings/calendar")
+    public Result<List<String>> getRecordingCalendar(
+            @PathVariable Integer id,
+            @RequestParam String month) {
+        Integer userId = securityUtils.getCurrentUserId();
+        cameraService.checkAccess(userId, id);
+        List<String> calendar = videoRecordingService.getRecordingCalendar(id, month);
+        return Result.success(calendar);
+    }
+
+    @GetMapping("/{id}/recordings/cloud")
+    public Result<List<Map<String, Object>>> getCloudRecordings(
             @PathVariable Integer id,
             @RequestParam String date) {
         Integer userId = securityUtils.getCurrentUserId();
         cameraService.checkAccess(userId, id);
-        File[] files = videoRecordingService.getRecordings(id, date);
-        List<Map<String, String>> result = new ArrayList<>();
-        for (File file : files) {
-            Map<String, String> item = new HashMap<>();
-            String fileName = file.getName();
-            // Filename format: HH-mm-ss-HH-mm-ss.mp4
-            String baseName = fileName.replace(".mp4", "");
-            String[] parts = baseName.split("-");
-            if (parts.length >= 6) {
-                item.put("startTime", parts[0] + ":" + parts[1] + ":" + parts[2]);
-                item.put("endTime", parts[3] + ":" + parts[4] + ":" + parts[5]);
-            }
-            item.put("fileName", fileName);
-            item.put("fileSize", String.valueOf(file.length()));
-            result.add(item);
-        }
-        // Sort by start time descending
-        result.sort((a, b) -> b.getOrDefault("startTime", "").compareTo(a.getOrDefault("startTime", "")));
-        return Result.success(result);
+        List<Map<String, Object>> recordings = videoRecordingService.getRecordings(id, date);
+        return Result.success(recordings);
     }
 
-    @GetMapping("/{id}/recordings/local/play")
-    public void playLocalRecording(
+    @GetMapping("/{id}/recordings/cloud/play")
+    public Result<Map<String, Object>> getCloudPlayAddress(
             @PathVariable Integer id,
-            @RequestParam String date,
-            @RequestParam String file,
-            HttpServletRequest request,
-            HttpServletResponse response) {
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
         Integer userId = securityUtils.getCurrentUserId();
         cameraService.checkAccess(userId, id);
-        File videoFile = videoRecordingService.getRecordingFile(id, date, file);
-        if (videoFile == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            return;
-        }
-
-        long fileLength = videoFile.length();
-        response.setContentType("video/mp4");
-        response.setHeader("Accept-Ranges", "bytes");
-        response.setHeader("Content-Disposition", "inline; filename=\"" + file + "\"");
-
-        // Handle Range requests (required by HTML5 video)
-        String rangeHeader = request.getHeader("Range");
-        if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-            String rangeSpec = rangeHeader.substring(6);
-            String[] parts = rangeSpec.split("-");
-            long start = Long.parseLong(parts[0]);
-            long end = parts.length > 1 && !parts[1].isEmpty() ? Long.parseLong(parts[1]) : fileLength - 1;
-            if (end >= fileLength) end = fileLength - 1;
-            long contentLength = end - start + 1;
-
-            response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
-            response.setHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
-            response.setHeader("Content-Length", String.valueOf(contentLength));
-
-            try (RandomAccessFile raf = new RandomAccessFile(videoFile, "r")) {
-                raf.seek(start);
-                byte[] buffer = new byte[8192];
-                long remaining = contentLength;
-                OutputStream os = response.getOutputStream();
-                while (remaining > 0) {
-                    int toRead = (int) Math.min(buffer.length, remaining);
-                    int read = raf.read(buffer, 0, toRead);
-                    if (read <= -1) break;
-                    os.write(buffer, 0, read);
-                    remaining -= read;
-                }
-            } catch (Exception ignored) {
-            }
-        } else {
-            // No Range header; return full file
-            response.setHeader("Content-Length", String.valueOf(fileLength));
-            try (FileInputStream fis = new FileInputStream(videoFile);
-                 OutputStream os = response.getOutputStream()) {
-                byte[] buffer = new byte[8192];
-                int len;
-                while ((len = fis.read(buffer)) != -1) {
-                    os.write(buffer, 0, len);
-                }
-            } catch (Exception ignored) {
-            }
-        }
+        Map<String, Object> playInfo = videoRecordingService.getCloudPlayAddress(id, startTime, endTime);
+        return Result.success(playInfo);
     }
 
-    @DeleteMapping("/{id}/recordings/local")
-    public Result<Void> deleteLocalRecording(
+    @DeleteMapping("/{id}/recordings/cloud")
+    public Result<Void> deleteCloudRecording(
             @PathVariable Integer id,
-            @RequestParam String date,
-            @RequestParam String file) {
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
         Integer userId = securityUtils.getCurrentUserId();
         cameraService.checkAccess(userId, id);
-        boolean deleted = videoRecordingService.deleteRecording(id, date, file);
-        if (!deleted) {
-            throw new com.hamster.yingshi.common.BusinessException(
-                    com.hamster.yingshi.common.ErrorCode.FILE_NOT_FOUND, "Recording file not found");
-        }
+        videoRecordingService.deleteRecording(id, startTime, endTime);
         return Result.success();
-    }
-
-    @PostMapping("/{id}/recording/toggle")
-    public Result<Map<String, Object>> toggleCameraRecording(
-            @PathVariable Integer id,
-            @RequestBody Map<String, Boolean> body) {
-        Integer userId = securityUtils.getCurrentUserId();
-        cameraService.checkAccess(userId, id);
-        Boolean enabled = body.get("enabled");
-        if (enabled == null) {
-            throw new com.hamster.yingshi.common.BusinessException(
-                    com.hamster.yingshi.common.ErrorCode.PARAM_ERROR, "enabled parameter is required");
-        }
-        Camera camera = cameraService.findById(id);
-        camera.setRecordingEnabled(enabled ? 1 : 0);
-        cameraService.update(id, camera);
-        // When disabling recording, stop any active recording process for this camera
-        if (!enabled) {
-            videoRecordingService.stopRecording(id);
-        }
-        Map<String, Object> data = new HashMap<>();
-        data.put("enabled", enabled);
-        return Result.success(data);
     }
 }

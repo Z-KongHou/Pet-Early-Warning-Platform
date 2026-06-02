@@ -7,6 +7,7 @@ import com.hamster.yingshi.config.EzvizProperties;
 import com.hamster.yingshi.dto.ezviz.EzvizTokenResponse;
 import com.hamster.yingshi.dto.ezviz.EzvizLiveResponse;
 import com.hamster.yingshi.dto.ezviz.EzvizCloudVideoListResponse;
+import com.hamster.yingshi.dto.ezviz.CloudRecordingDtos.*;
 import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.mapper.CameraMapper;
 import org.slf4j.Logger;
@@ -34,6 +35,24 @@ public class EzvizService {
     private static final String LIVE_URL = "https://open.ys7.com/api/lapp/v2/live/address/get";
     private static final String CLOUD_VIDEO_LIST_URL = "https://open.ys7.com/api/lapp/cloud/video/list";
     private static final String DEVICE_INFO_URL = "https://open.ys7.com/api/lapp/device/info";
+
+    // Cloud Recording 2.0 API URLs
+    private static final String CLOUD_SPACE_URL = "https://open.ys7.com/api/service/cloudrecord/video/space";
+    private static final String CLOUD_SPACE_LIST_URL = "https://open.ys7.com/api/service/cloudrecord/video/space/listById";
+    private static final String CLOUD_PLAN_URL = "https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff";
+    private static final String CLOUD_PLAN_STOP_URL = "https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/stop";
+    private static final String CLOUD_PLAN_LIST_URL = "https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/listById";
+    private static final String CLOUD_TASK_LIST_URL = "https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/task/list";
+    private static final String CLOUD_TASK_STOP_URL = "https://open.ys7.com/api/service/cloudrecord/video/plan/task/stop";
+    private static final String CLOUD_CALENDAR_URL = "https://open.ys7.com/api/service/cloudrecord/video/exist/month";
+    private static final String CLOUD_VIDEO_INFO_URL = "https://open.ys7.com/api/service/cloudrecord/video/info/list";
+    private static final String CLOUD_PLAYBACK_URL = "https://open.ys7.com/api/service/media/cloud/replay/address";
+    private static final String CLOUD_VIDEO_DELETE_URL = "https://open.ys7.com/api/service/cloudrecord/video/infos/delete";
+    private static final String CLOUD_TEMPLATE_LIST_URL = "https://open.ys7.com/api/service/cloud/video/template/list";
+    private static final String LAPP_LIVE_ADDRESS_URL = "https://open.ys7.com/api/lapp/v2/live/address/get";
+
+    // Cloud VOD API URLs
+    private static final String VOD_FILE_LIST_URL = "https://open.ys7.com/api/service/open/vod/file/listById";
 
     @Autowired
     private EzvizProperties ezvizProperties;
@@ -267,6 +286,588 @@ public class EzvizService {
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
                     "Failed to parse Ezviz live stream response: " + e.getMessage());
+        }
+    }
+
+    // ==================== Cloud Recording 2.0 APIs ====================
+
+    public CloudSpaceResponse createCloudSpace(String spaceName, int expireDays) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", token);
+        body.add("spaceName", spaceName);
+        body.add("expireDays", String.valueOf(expireDays));
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Creating cloud space: spaceName={}, expireDays={}", spaceName, expireDays);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                CLOUD_SPACE_URL, HttpMethod.POST, request, String.class);
+
+        try {
+            CloudSpaceResponse resp = objectMapper.readValue(response.getBody(), CloudSpaceResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                log.info("Cloud space created: spaceId={}", resp.getData().getSpaceId());
+                return resp;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to create cloud space: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse create cloud space response: " + e.getMessage());
+        }
+    }
+
+    public CloudSpaceResponse getCloudSpace(Long spaceId) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        String url = CLOUD_SPACE_URL + "?spaceId=" + spaceId + "&accessToken=" + token;
+        log.info("Querying cloud space: spaceId={}", spaceId);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        try {
+            CloudSpaceResponse resp = objectMapper.readValue(response.getBody(), CloudSpaceResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                return resp;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to get cloud space: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse get cloud space response: " + e.getMessage());
+        }
+    }
+
+    public CloudPlanResponse createOneOffPlan(Long spaceId, Long templateId, String planName,
+                                               String deviceSerial, String localIndex, int durationSeconds) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("accessToken", token);
+
+        LocalDateTime now = LocalDateTime.now();
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+        String startTime = now.format(fmt);
+        String endTime = now.plusSeconds(durationSeconds).format(fmt);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("spaceId", spaceId);
+        body.put("planName", planName);
+        body.put("startTime", startTime);
+        body.put("endTime", endTime);
+        body.put("specifiedEndTime", true);
+        body.put("autoDelete", false);
+
+        List<Map<String, String>> devInfos = new ArrayList<>();
+        Map<String, String> dev = new HashMap<>();
+        dev.put("deviceSerial", deviceSerial);
+        dev.put("localIndex", localIndex != null ? localIndex : "1");
+        devInfos.add(dev);
+        body.put("devIndexInfos", devInfos);
+
+        if (templateId != null) {
+            body.put("templateId", templateId);
+        }
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        log.info("Creating one-off plan: spaceId={}, deviceSerial={}, duration={}s", spaceId, deviceSerial, durationSeconds);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                CLOUD_PLAN_URL, HttpMethod.POST, request, String.class);
+
+        try {
+            CloudPlanResponse resp = objectMapper.readValue(response.getBody(), CloudPlanResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                log.info("One-off plan created: planId={}", resp.getData().getOneOffPlanId());
+                return resp;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to create one-off plan: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse create one-off plan response: " + e.getMessage());
+        }
+    }
+
+    public void stopOneOffPlan(Long oneOffPlanId) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", token);
+        body.add("oneOffPlanId", String.valueOf(oneOffPlanId));
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Stopping one-off plan: planId={}", oneOffPlanId);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                CLOUD_PLAN_STOP_URL, HttpMethod.POST, request, String.class);
+
+        try {
+            CloudStopResponse resp = objectMapper.readValue(response.getBody(), CloudStopResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                log.info("One-off plan stopped: planId={}", oneOffPlanId);
+                return;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to stop one-off plan: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse stop one-off plan response: " + e.getMessage());
+        }
+    }
+
+    public CloudPlanResponse getOneOffPlan(Long oneOffPlanId) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+
+        String url = CLOUD_PLAN_URL + "?oneOffPlanId=" + oneOffPlanId + "&accessToken=" + token;
+        log.info("Querying one-off plan: planId={}", oneOffPlanId);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        try {
+            CloudPlanResponse resp = objectMapper.readValue(response.getBody(), CloudPlanResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                return resp;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to get one-off plan: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse get one-off plan response: " + e.getMessage());
+        }
+    }
+
+    public void deleteOneOffPlan(Long oneOffPlanId) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", token);
+        body.add("oneOffPlanId", String.valueOf(oneOffPlanId));
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Deleting one-off plan: planId={}", oneOffPlanId);
+
+        restTemplate.exchange(CLOUD_PLAN_URL, HttpMethod.DELETE, request, String.class);
+        log.info("One-off plan deleted: planId={}", oneOffPlanId);
+    }
+
+    public CloudTaskListResponse getPlanTasks(Long planId, int pageStart, int pageSize) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+
+        String url = CLOUD_TASK_LIST_URL + "?planId=" + planId + "&pageStart=" + pageStart + "&pageSize=" + pageSize + "&accessToken=" + token;
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        try {
+            CloudTaskListResponse resp = objectMapper.readValue(response.getBody(), CloudTaskListResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                return resp;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to get plan tasks: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse get plan tasks response: " + e.getMessage());
+        }
+    }
+
+    public void stopTask(Long taskId, Long planId, Long spaceId) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", token);
+        body.add("id", String.valueOf(taskId));
+        body.add("planId", String.valueOf(planId));
+        body.add("spaceId", String.valueOf(spaceId));
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Stopping task: taskId={}, planId={}", taskId, planId);
+
+        restTemplate.exchange(CLOUD_TASK_STOP_URL, HttpMethod.POST, request, String.class);
+        log.info("Task stopped: taskId={}", taskId);
+    }
+
+    public List<String> getRecordingCalendar(String deviceSerial, String localIndex, Long spaceId, String month) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("deviceSerial", deviceSerial);
+        headers.set("localIndex", localIndex != null ? localIndex : "1");
+        headers.set("accessToken", token);
+
+        String url = CLOUD_CALENDAR_URL + "?month=" + month + "&spaceId=" + spaceId;
+        log.info("Querying recording calendar: deviceSerial={}, month={}", deviceSerial, month);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        try {
+            CloudCalendarResponse resp = objectMapper.readValue(response.getBody(), CloudCalendarResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                return resp.getData() != null ? resp.getData() : new ArrayList<>();
+            }
+            log.warn("Failed to get recording calendar: {}", resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown");
+            return new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Failed to parse recording calendar response: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public List<CloudVideoInfoResponse.VideoInfo> getRecordingInfoList(String deviceSerial, String localIndex,
+                                                                        Long spaceId, String startTime, String endTime) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("deviceSerial", deviceSerial);
+        headers.set("localIndex", localIndex != null ? localIndex : "1");
+        headers.set("accessToken", token);
+
+        String url = CLOUD_VIDEO_INFO_URL + "?startTime=" + startTime + "&endTime=" + endTime + "&spaceId=" + spaceId;
+        log.info("Querying recording info: deviceSerial={}, startTime={}, endTime={}", deviceSerial, startTime, endTime);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        try {
+            CloudVideoInfoResponse resp = objectMapper.readValue(response.getBody(), CloudVideoInfoResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                return resp.getData() != null ? resp.getData() : new ArrayList<>();
+            }
+            log.warn("Failed to get recording info: {}", resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown");
+            return new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Failed to parse recording info response: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public CloudPlayAddressResponse.PlayData getCloudPlaybackAddress(String deviceSerial, String localIndex,
+                                                                      Long spaceId, String startTime, String stopTime) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        int ch = localIndex != null ? Integer.parseInt(localIndex) : 1;
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", token);
+        body.add("deviceSerial", deviceSerial);
+        body.add("channelNo", String.valueOf(ch));
+        body.add("protocol", "1"); // 1=ezopen
+        body.add("type", "3"); // 3=cloud recording playback
+        body.add("startTime", startTime);
+        body.add("stopTime", stopTime);
+        body.add("busType", "7"); // 7=cloud recording 2.0
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Getting cloud playback address via lapp: deviceSerial={}, startTime={}, stopTime={}, spaceId={}",
+                deviceSerial, startTime, stopTime, spaceId);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                LAPP_LIVE_ADDRESS_URL, HttpMethod.POST, request, String.class);
+
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
+            String code = root.path("code").asText();
+            log.info("Lapp playback response: code={}, body={}", code, response.getBody());
+
+            if ("200".equals(code)) {
+                com.fasterxml.jackson.databind.JsonNode data = root.path("data");
+                String url = data.path("url").asText();
+                String expireTime = data.path("expireTime").asText("");
+
+                // Append spaceId to the URL for EZUIKit
+                if (url != null && !url.isEmpty() && spaceId != null) {
+                    url = url + "&spaceId=" + spaceId;
+                }
+
+                CloudPlayAddressResponse.PlayData playData = new CloudPlayAddressResponse.PlayData();
+                playData.setUrl(url);
+                playData.setExpireTime(expireTime);
+                log.info("Cloud playback address fetched: url={}", url);
+                return playData;
+            }
+
+            String msg = root.path("msg").asText("unknown error");
+            log.warn("Lapp playback error: code={}, msg={}", code, msg);
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to get cloud playback address (code=" + code + "): " + msg);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse cloud playback address response: " + e.getMessage());
+        }
+    }
+
+    public void deleteCloudRecording(String deviceSerial, String localIndex, Long spaceId,
+                                      String startTime, String endTime) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.set("deviceSerial", deviceSerial);
+        headers.set("localIndex", localIndex != null ? localIndex : "1");
+        headers.set("accessToken", token);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("startTime", startTime);
+        body.add("endTime", endTime);
+        body.add("spaceId", String.valueOf(spaceId));
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Deleting cloud recording: deviceSerial={}, startTime={}, endTime={}", deviceSerial, startTime, endTime);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                CLOUD_VIDEO_DELETE_URL, HttpMethod.POST, request, String.class);
+
+        try {
+            CloudDeleteResponse resp = objectMapper.readValue(response.getBody(), CloudDeleteResponse.class);
+            if (resp.getMeta() != null && resp.getMeta().getCode() == 200) {
+                log.info("Cloud recording deleted successfully");
+                return;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to delete cloud recording: " + (resp.getMeta() != null ? resp.getMeta().getMessage() : "unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse delete cloud recording response: " + e.getMessage());
+        }
+    }
+
+    public List<Map<String, Object>> getTemplateList() {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+
+        String url = CLOUD_TEMPLATE_LIST_URL + "?pageStart=0&pageSize=50&accessToken=" + token;
+        log.info("Querying template list");
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
+            int code = root.path("meta").path("code").asInt(0);
+            if (code == 200) {
+                List<Map<String, Object>> result = new ArrayList<>();
+                com.fasterxml.jackson.databind.JsonNode arr = root.path("data").path("result");
+                if (arr.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode node : arr) {
+                        Map<String, Object> item = new HashMap<>();
+                        item.put("templateId", node.path("templateId").asInt());
+                        item.put("templateName", node.path("templateName").asText(""));
+                        item.put("templateType", node.path("templateType").asText(""));
+                        item.put("format", node.path("format").asText(""));
+                        item.put("spaceId", node.path("spaceId").asInt());
+                        item.put("spaceName", node.path("spaceName").asText(""));
+                        item.put("segmentDuration", node.path("segmentDuration").asInt());
+                        item.put("audioFormat", node.path("audioFormat").asText(""));
+                        item.put("createTime", node.path("createTime").asText(""));
+                        result.add(item);
+                    }
+                }
+                log.info("Template list fetched, count={}", result.size());
+                return result;
+            }
+            log.warn("Failed to get template list: code={}", code);
+            return new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Failed to parse template list response: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 云点播文件列表查询（通过云点播空间获取录像，支持分页获取全部数据）
+     */
+    public List<Map<String, Object>> getVodFileList(Long spaceId, String startTime, String endTime) {
+        List<Map<String, Object>> allResults = new ArrayList<>();
+        String lastId = "";
+        boolean hasNext = true;
+
+        while (hasNext) {
+            String token = getPlatformToken();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("accessToken", token);
+            body.add("spaceIds", String.valueOf(spaceId));
+            body.add("fileType", "1");           // 1=视频
+            body.add("fileChildType", "10");     // 10=mp4
+            body.add("startTime", startTime);
+            body.add("endTime", endTime);
+            body.add("pageSize", "50");
+            body.add("sortRule", "0");           // 0=倒序
+            if (!lastId.isEmpty()) {
+                body.add("lastId", lastId);
+            }
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+            log.info("Querying VOD file list: spaceId={}, lastId='{}'", spaceId, lastId);
+
+            try {
+                ResponseEntity<String> response = restTemplate.exchange(
+                        VOD_FILE_LIST_URL, HttpMethod.POST, request, String.class);
+
+                com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
+                int code = root.path("meta").path("code").asInt(0);
+                if (code == 200) {
+                    com.fasterxml.jackson.databind.JsonNode data = root.path("data");
+                    com.fasterxml.jackson.databind.JsonNode arr = data.path("result");
+                    int count = 0;
+                    if (arr.isArray()) {
+                        count = arr.size();
+                        for (com.fasterxml.jackson.databind.JsonNode node : arr) {
+                            Map<String, Object> item = new HashMap<>();
+                            item.put("fileNodeId", node.path("folderNode").asText(""));
+                            item.put("fileName", node.path("fileName").asText(""));
+                            item.put("fileSize", node.path("fileSize").asLong(0));
+                            item.put("duration", node.path("duration").asInt(0));
+                            item.put("coverPic", node.path("coverPic").asText(""));
+                            item.put("coverPicUrl", node.path("coverPicUrl").asText(""));
+                            item.put("startTime", node.path("startTime").asText(""));
+                            item.put("stopTime", node.path("stopTime").asText(""));
+                            item.put("deviceSerial", node.path("deviceSerial").asText(""));
+                            item.put("channelNo", node.path("channelNo").asInt(0));
+                            // 获取播放地址
+                            com.fasterxml.jackson.databind.JsonNode urls = node.path("urls");
+                            if (urls.isObject() && urls.fieldNames().hasNext()) {
+                                String key = urls.fieldNames().next();
+                                item.put("playUrl", urls.path(key).asText(""));
+                            }
+                            allResults.add(item);
+                        }
+                    }
+                    // 检查是否还有下一页
+                    hasNext = data.path("hasNext").asBoolean(false);
+                    // lastId 是 base64 编码的字符串，直接使用
+                    String newLastId = data.path("lastId").asText("");
+                    log.info("VOD page fetched: count={}, hasNext={}, newLastId='{}'", count, hasNext, newLastId);
+                    if (hasNext && !newLastId.isEmpty()) {
+                        lastId = newLastId;
+                    } else {
+                        hasNext = false;
+                    }
+                } else {
+                    log.warn("Failed to get VOD file list: code={}, msg={}", code, root.path("meta").path("message").asText());
+                    hasNext = false;
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse VOD file list response: {}", e.getMessage());
+                hasNext = false;
+            }
+        }
+
+        log.info("VOD file list fetched, total count={}", allResults.size());
+        return allResults;
+    }
+
+    /**
+     * 获取云点播文件播放地址
+     */
+    public String getVodFileDownloadUrl(Long spaceId, String fileNodeId, int expireSeconds) {
+        String token = getPlatformToken();
+        String url = "https://open.ys7.com/api/service/open/vod/file/downloadurl"
+                + "?fileNodeIds=" + fileNodeId
+                + "&expireSeconds=" + expireSeconds
+                + "&accessToken=" + token;
+
+        log.info("Getting VOD file download URL: fileNodeId={}", fileNodeId);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), String.class);
+
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
+            int code = root.path("meta").path("code").asInt(0);
+            if (code == 200) {
+                com.fasterxml.jackson.databind.JsonNode dataArr = root.path("data");
+                if (dataArr.isArray() && dataArr.size() > 0) {
+                    com.fasterxml.jackson.databind.JsonNode urls = dataArr.get(0).path("urls");
+                    if (urls.isObject() && urls.fieldNames().hasNext()) {
+                        String key = urls.fieldNames().next();
+                        return urls.path(key).asText("");
+                    }
+                }
+            }
+            log.warn("Failed to get VOD download URL: code={}", code);
+            return null;
+        } catch (Exception e) {
+            log.error("Failed to parse VOD download URL response: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    public String getPlatformTokenPublic() {
+        return getPlatformToken();
+    }
+
+    public void updateTemplate(Long templateId, String templateName, String format, Long spaceId,
+                               int segmentDuration, String audioFormat) {
+        String token = getPlatformToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("accessToken", token);
+        body.add("templateId", String.valueOf(templateId));
+        body.add("templateName", templateName);
+        body.add("format", format);
+        body.add("spaceId", String.valueOf(spaceId));
+        body.add("segmentDuration", String.valueOf(segmentDuration));
+        body.add("audioFormat", audioFormat);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        log.info("Updating template: templateId={}, segmentDuration={}", templateId, segmentDuration);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "https://open.ys7.com/api/service/cloud/video/template/update",
+                HttpMethod.PUT, request, String.class);
+
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(response.getBody());
+            int code = root.path("meta").path("code").asInt(0);
+            if (code == 200) {
+                log.info("Template updated: templateId={}, segmentDuration={}", templateId, segmentDuration);
+                return;
+            }
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to update template: " + root.path("meta").path("message").asText("unknown"));
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.EZVIZ_API_ERROR,
+                    "Failed to parse update template response: " + e.getMessage());
         }
     }
 }

@@ -24,15 +24,15 @@ export default function CamerasPage() {
   const [playbackEnd, setPlaybackEnd] = useState("");
 
   // 录像列表状态
-  const [recordings, setRecordings] = useState<{ startTime: string; endTime: string; fileName: string; fileSize: string }[]>([]);
+  const [recordings, setRecordings] = useState<{ fileId: string; startTime: string; endTime: string; fileSize: number; videoLong: number; deviceSerial: string; channelNo: string }[]>([]);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   });
-  // 本地录像播放URL
-  const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
+  // 云录像播放状态
+  const [cloudPlaybackInfo, setCloudPlaybackInfo] = useState<{ url: string; accessToken: string; deviceKey: string; channelNo: number; playType?: string } | null>(null);
 
   // 录像列表分页
   const [recordingPage, setRecordingPage] = useState(1);
@@ -40,6 +40,10 @@ export default function CamerasPage() {
 
   // 展开的摄像头ID（用于录像列表）
   const [expandedCameraId, setExpandedCameraId] = useState<number | null>(null);
+
+  // 模板列表
+  const [templates, setTemplates] = useState<{ templateId: number; templateName: string; format: string; spaceId: number; spaceName: string }[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const playerRef = useRef<EZUIKitPlayerInstance | null>(null);
   const liveVideoColRef = useRef<HTMLDivElement>(null);
@@ -65,6 +69,19 @@ export default function CamerasPage() {
   async function refresh() {
     const d = await apiFetch<Pagination<Camera>>("/api/cameras?page=1&size=20", { headers: authHeaders() });
     setData(d);
+  }
+
+  async function fetchTemplates() {
+    try {
+      const res = await apiFetch<{ templateId: number; templateName: string; format: string; spaceId: number; spaceName: string }[]>(
+        "/api/templates",
+        { headers: authHeaders() }
+      );
+      setTemplates(res ?? []);
+      setShowTemplates(true);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取模板列表失败");
+    }
   }
 
   const openStream = useCallback(async (camera: Camera) => {
@@ -93,11 +110,11 @@ export default function CamerasPage() {
   const fetchRecordings = useCallback(async (cameraId: number, date: string) => {
     setRecordingsLoading(true);
     setRecordings([]);
-    setLocalVideoUrl(null);
+    setCloudPlaybackInfo(null);
     setRecordingPage(1);
     try {
-      const res = await apiFetch<{ startTime: string; endTime: string; fileName: string; fileSize: string }[]>(
-        `/api/cameras/${cameraId}/recordings/local?date=${encodeURIComponent(date)}`,
+      const res = await apiFetch<{ fileId: string; startTime: string; endTime: string; fileSize: number; videoLong: number; deviceSerial: string; channelNo: string }[]>(
+        `/api/cameras/${cameraId}/recordings/cloud?date=${encodeURIComponent(date)}`,
         { headers: authHeaders() }
       );
       setRecordings(res ?? []);
@@ -109,12 +126,10 @@ export default function CamerasPage() {
   }, []);
 
   const openPlayback = useCallback(async (camera: Camera) => {
-    // 如果点击已展开的摄像头，则收起
     if (expandedCameraId === camera.id) {
       setExpandedCameraId(null);
       setRecordings([]);
-      if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
-      setLocalVideoUrl(null);
+      setCloudPlaybackInfo(null);
       return;
     }
     setStreamErr(null);
@@ -123,31 +138,33 @@ export default function CamerasPage() {
     setPlaybackMode(true);
     setPlaybackStart("");
     setPlaybackEnd("");
-    if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
-    setLocalVideoUrl(null);
+    setCloudPlaybackInfo(null);
     await fetchRecordings(camera.id, selectedDate);
-  }, [selectedDate, fetchRecordings, expandedCameraId, localVideoUrl]);
+  }, [selectedDate, fetchRecordings, expandedCameraId]);
 
-  const playRecording = useCallback(async (camera: Camera, fileName: string) => {
+  const playRecording = useCallback(async (camera: Camera, startTime: string, endTime: string) => {
     setStreamErr(null);
     setStreamInfo(null);
     setStreamLoading(true);
-    if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
-    setLocalVideoUrl(null);
+    setCloudPlaybackInfo(null);
     try {
-      const url = `/api/cameras/${camera.id}/recordings/local/play?date=${encodeURIComponent(selectedDate)}&file=${encodeURIComponent(fileName)}`;
-      const res = await fetch(url, { headers: authHeaders() });
-      if (!res.ok) {
-        throw new Error(`加载视频失败 (${res.status})`);
-      }
-      const blob = await res.blob();
-      setLocalVideoUrl(URL.createObjectURL(blob));
+      const res = await apiFetch<{ url: string; accessToken: string; deviceKey: string; channelNo: number; playType?: string }>(
+        `/api/cameras/${camera.id}/recordings/cloud/play?startTime=${encodeURIComponent(startTime)}&endTime=${encodeURIComponent(endTime)}`,
+        { headers: authHeaders() }
+      );
+      setCloudPlaybackInfo({
+        url: res.url,
+        accessToken: res.accessToken,
+        deviceKey: res.deviceKey,
+        channelNo: Number(res.channelNo),
+        playType: res.playType,
+      });
     } catch (e) {
-      setStreamErr(e instanceof Error ? e.message : "视频加载失败");
+      setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "获取播放地址失败");
     } finally {
       setStreamLoading(false);
     }
-  }, [selectedDate, localVideoUrl]);
+  }, []);
 
   const closeStream = useCallback(() => {
     playerRef.current = null;
@@ -159,9 +176,8 @@ export default function CamerasPage() {
     setPlaybackEnd("");
     setRecordings([]);
     setExpandedCameraId(null);
-    if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
-    setLocalVideoUrl(null);
-  }, [localVideoUrl]);
+    setCloudPlaybackInfo(null);
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -170,7 +186,15 @@ export default function CamerasPage() {
           <h1 className="text-xl font-semibold">摄像头</h1>
           <p className="text-sm text-zinc-500">可新增、更新、删除，查看实时视频画面与录像回放</p>
         </div>
-        <RefreshButton onRefresh={refresh} />
+        <div className="flex gap-2">
+          <button
+            className="rounded-md border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50"
+            onClick={fetchTemplates}
+          >
+            查看后处理模板
+          </button>
+          <RefreshButton onRefresh={refresh} />
+        </div>
       </div>
 
       {err ? (
@@ -178,6 +202,49 @@ export default function CamerasPage() {
           {err}
         </div>
       ) : null}
+
+      {/* 后处理模板列表 */}
+      {showTemplates && (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium">后处理模板</div>
+            <button
+              className="rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
+              onClick={() => setShowTemplates(false)}
+            >
+              关闭
+            </button>
+          </div>
+          {templates.length > 0 ? (
+            <div className="rounded-md border border-zinc-200 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-zinc-50 text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-1.5 text-left">模板ID</th>
+                    <th className="px-3 py-1.5 text-left">模板名称</th>
+                    <th className="px-3 py-1.5 text-left">格式</th>
+                    <th className="px-3 py-1.5 text-left">空间ID</th>
+                    <th className="px-3 py-1.5 text-left">空间名称</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {templates.map((t) => (
+                    <tr key={t.templateId} className="border-t border-zinc-50">
+                      <td className="px-3 py-1.5 font-mono">{t.templateId}</td>
+                      <td className="px-3 py-1.5">{t.templateName}</td>
+                      <td className="px-3 py-1.5">{t.format}</td>
+                      <td className="px-3 py-1.5 font-mono">{t.spaceId}</td>
+                      <td className="px-3 py-1.5">{t.spaceName}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center text-sm text-zinc-400 py-4">暂无模板</div>
+          )}
+        </div>
+      )}
 
       {/* 新增摄像头表单 */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -313,7 +380,6 @@ export default function CamerasPage() {
               <th className="px-4 py-2 text-left">名称</th>
               <th className="px-4 py-2 text-left">设备序列号</th>
               <th className="px-4 py-2 text-left">在线</th>
-              <th className="px-4 py-2 text-center">录像</th>
               <th className="px-4 py-2 text-right">操作</th>
             </tr>
           </thead>
@@ -326,40 +392,6 @@ export default function CamerasPage() {
                   <td className="px-4 py-2 font-medium">{c.name}</td>
                   <td className="px-4 py-2 font-mono text-xs">{c.deviceKey}</td>
                   <td className="px-4 py-2">{c.onlineStatus === 1 ? "在线" : "离线"}</td>
-                  <td className="px-4 py-2 text-center">
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await apiFetch<{ enabled: boolean }>(`/api/cameras/${c.id}/recording/toggle`, {
-                            method: "POST",
-                            headers: authHeaders(),
-                            json: { enabled: !c.recordingEnabled },
-                          });
-                          setData((prev) => {
-                            if (!prev) return prev;
-                            return {
-                              ...prev,
-                              list: prev.list.map((item) =>
-                                item.id === c.id ? { ...item, recordingEnabled: res.enabled } : item
-                              ),
-                            };
-                          });
-                        } catch (e) {
-                          setErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "切换录像状态失败");
-                        }
-                      }}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                        c.recordingEnabled ? "bg-emerald-500" : "bg-zinc-300"
-                      }`}
-                      title={c.recordingEnabled ? "点击关闭录像" : "点击开启录像"}
-                    >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                          c.recordingEnabled ? "translate-x-4" : "translate-x-0.5"
-                        }`}
-                      />
-                    </button>
-                  </td>
                   <td className="px-4 py-2">
                     <div className="flex justify-end gap-2 flex-wrap">
                       <button
@@ -409,30 +441,39 @@ export default function CamerasPage() {
                           />
                         </div>
 
-                        {/* 视频播放器 */}
-                        {localVideoUrl && (
+                        {/* 云录像播放器 */}
+                        {cloudPlaybackInfo && (
                           <div className="space-y-2">
                             <div className="flex justify-start">
                               <button
                                 className="rounded-md border border-zinc-200 px-3 py-1 text-xs hover:bg-zinc-50"
-                                onClick={() => {
-                                  if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
-                                  setLocalVideoUrl(null);
-                                }}
+                                onClick={() => setCloudPlaybackInfo(null)}
                               >
                                 关闭视频
                               </button>
                             </div>
-                            <video
-                              src={localVideoUrl}
-                              controls
-                              autoPlay
-                              className="rounded-lg max-w-full"
-                              style={{ maxHeight: 360 }}
-                              onError={() => setStreamErr("视频播放失败")}
-                            >
-                              您的浏览器不支持视频播放
-                            </video>
+                            <div className="aspect-video rounded-lg overflow-hidden bg-black max-w-2xl">
+                              {cloudPlaybackInfo.playType === "vod" ? (
+                                // 云点播 mp4 直接播放
+                                <video
+                                  src={cloudPlaybackInfo.url}
+                                  controls
+                                  autoPlay
+                                  className="w-full h-full"
+                                />
+                              ) : (
+                                // ezopen:// 协议使用 EZUIKit 播放
+                                <VideoPlayer
+                                  deviceKey={cloudPlaybackInfo.deviceKey}
+                                  channelNo={cloudPlaybackInfo.channelNo}
+                                  accessToken={cloudPlaybackInfo.accessToken}
+                                  mode="live"
+                                  customUrl={cloudPlaybackInfo.url}
+                                  playerRef={playerRef}
+                                  onError={setStreamErr}
+                                />
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -460,16 +501,12 @@ export default function CamerasPage() {
                                 </thead>
                                 <tbody>
                                   {recordings.slice((recordingPage - 1) * RECORDINGS_PER_PAGE, recordingPage * RECORDINGS_PER_PAGE).map((r, i) => {
-                                    const toSec = (t: string) => {
-                                      const [h, m, s] = t.split(":").map(Number);
-                                      return h * 3600 + m * 60 + s;
-                                    };
-                                    const dur = Math.max(0, toSec(r.endTime) - toSec(r.startTime));
-                                    const mm = String(Math.floor(dur / 60)).padStart(2, "0");
-                                    const ss = String(dur % 60).padStart(2, "0");
+                                    const durSec = r.videoLong ? Math.round(r.videoLong / 1000) : 0;
+                                    const mm = String(Math.floor(durSec / 60)).padStart(2, "0");
+                                    const ss = String(durSec % 60).padStart(2, "0");
                                     const globalIndex = (recordingPage - 1) * RECORDINGS_PER_PAGE + i + 1;
                                     return (
-                                      <tr key={r.fileName} className="border-t border-zinc-50 hover:bg-zinc-50">
+                                      <tr key={r.fileId} className="border-t border-zinc-50 hover:bg-zinc-50">
                                         <td className="px-3 py-1.5">{globalIndex}</td>
                                         <td className="px-3 py-1.5 font-mono">{r.startTime}</td>
                                         <td className="px-3 py-1.5 font-mono">{r.endTime}</td>
@@ -477,7 +514,7 @@ export default function CamerasPage() {
                                         <td className="px-3 py-1.5 text-right space-x-1">
                                           <button
                                             className="rounded-md border border-emerald-200 text-emerald-700 px-2 py-0.5 text-xs hover:bg-emerald-50"
-                                            onClick={() => playRecording(c, r.fileName)}
+                                            onClick={() => playRecording(c, r.startTime, r.endTime)}
                                           >
                                             播放
                                           </button>
@@ -485,11 +522,11 @@ export default function CamerasPage() {
                                             className="rounded-md border border-red-200 text-red-700 px-2 py-0.5 text-xs hover:bg-red-50"
                                             onClick={async () => {
                                               try {
-                                                await apiFetch(`/api/cameras/${c.id}/recordings/local?date=${encodeURIComponent(selectedDate)}&file=${encodeURIComponent(r.fileName)}`, {
+                                                await apiFetch(`/api/cameras/${c.id}/recordings/cloud?startTime=${encodeURIComponent(r.startTime)}&endTime=${encodeURIComponent(r.endTime)}`, {
                                                   method: "DELETE",
                                                   headers: authHeaders(),
                                                 });
-                                                setRecordings((prev) => prev.filter((item) => item.fileName !== r.fileName));
+                                                setRecordings((prev) => prev.filter((item) => item.fileId !== r.fileId));
                                               } catch (e) {
                                                 setStreamErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "删除失败");
                                               }
@@ -507,8 +544,31 @@ export default function CamerasPage() {
                             {/* 分页控件 */}
                             {recordings.length > RECORDINGS_PER_PAGE && (
                               <div className="flex items-center justify-between text-xs text-zinc-500">
-                                <span>共 {recordings.length} 条，第 {recordingPage}/{Math.ceil(recordings.length / RECORDINGS_PER_PAGE)} 页</span>
-                                <div className="flex gap-1">
+                                <span>共 {recordings.length} 条</span>
+                                <div className="flex items-center gap-2">
+                                  <span>第</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={Math.ceil(recordings.length / RECORDINGS_PER_PAGE)}
+                                    value={recordingPage}
+                                    onChange={(e) => {
+                                      const v = parseInt(e.target.value);
+                                      if (!isNaN(v) && v >= 1 && v <= Math.ceil(recordings.length / RECORDINGS_PER_PAGE)) {
+                                        setRecordingPage(v);
+                                      }
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const v = parseInt((e.target as HTMLInputElement).value);
+                                        if (!isNaN(v) && v >= 1 && v <= Math.ceil(recordings.length / RECORDINGS_PER_PAGE)) {
+                                          setRecordingPage(v);
+                                        }
+                                      }
+                                    }}
+                                    className="w-10 rounded border border-zinc-300 px-1 py-0.5 text-center text-xs"
+                                  />
+                                  <span>/ {Math.ceil(recordings.length / RECORDINGS_PER_PAGE)} 页</span>
                                   <button
                                     disabled={recordingPage <= 1}
                                     onClick={() => setRecordingPage((p) => Math.max(1, p - 1))}

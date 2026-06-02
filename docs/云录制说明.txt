@@ -1,0 +1,989 @@
+================================================================
+萤石云录制2.0全流程操作方案
+================================================================
+更新时间：2026.03.12
+
+================================================================
+一、概述
+================================================================
+
+云录制2.0平台提供从创建存储空间、制定录制计划到录像播放下载的完整操作方案。
+
+核心流程：创建存储空间 -> 创建一次性录制计划 -> 播放录像/下载录像
+
+前置条件：
+- 账号认证：完成萤石云开放平台账号注册及企业认证（云录制2.0仅企业账号可用）
+- 凭证获取：获取接口调用所需的accessToken，确保令牌有效未过期
+- 设备对接：待录制设备完成萤石云平台上云对接，设备处于在线正常状态
+- 网络权限：操作终端网络通畅，且拥有萤石云录制2.0平台及相关接口的访问权限
+
+================================================================
+二、存储空间管理
+================================================================
+
+----------------------------------------------------------------
+2.1 创建加密录制项目（存储空间）
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/space
+请求方式: POST
+Content-Type: application/x-www-form-urlencoded
+是否支持托管: 否
+是否支持子帐号: 否
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  expireDays     int       否    过期天数，默认7天。0=永久保存，1-3650=过期天数
+  spaceName      string    是    录像空间名称，仅支持中文、英文、数字、下划线，长度不超过32个字符
+
+响应:
+  meta.code      int       返回码
+  meta.message   string    返回信息
+  data.spaceId   int       空间id
+  data.totalSize int       空间总大小
+  data.totalTimePlan int   时间计划数量
+  data.totalEventPlan int  事件计划数量
+  data.spaceName string    空间名称
+  data.storageType int     存储类型 1=标准存储
+  data.expireDays int      过期天数
+  data.primarySpace boolean 是否为主空间
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": ""},
+    "data": {
+        "spaceId": 5, "totalSize": 0, "totalTimePlan": 0, "totalEventPlan": 0,
+        "spaceName": "dsfasdfasd", "storageType": 1, "expireDays": 7, "primarySpace": false
+    }
+}
+
+错误码: 200成功, 500服务器异常, 400参数错误
+
+注意事项:
+- 存储空间生命周期（视频存储时长）的修改只会应用于新生成的视频，已存在的视频按原有生命周期存储
+
+----------------------------------------------------------------
+2.2 查询加密录制项目信息
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/space
+请求方式: GET
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  spaceId        string    是    录像空间id
+
+响应:
+  data.spaceId   int       录像空间ID
+  data.totalSize int       空间总大小
+  data.totalTimePlan int   时间计划数量
+  data.totalEventPlan int  事件计划数量
+  data.spaceName string    空间名称
+  data.storageType int     存储类型 1=标准存储
+  data.expireDays int      生命周期 0为永久
+  data.primarySpace boolean 是否为主空间
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": ""},
+    "data": {
+        "spaceId": 3, "totalSize": 0, "totalTimePlan": 0, "totalEventPlan": 0,
+        "spaceName": "dsfasdfasd", "storageType": 1, "expireDays": 0, "primarySpace": false
+    }
+}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误, 10002 accessToken过期或异常
+
+----------------------------------------------------------------
+2.3 查询加密录制项目列表
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/space/listById
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  startTime      string    是    查询开始时间，格式yyyyMMddHHmmss
+  endTime        string    是    查询结束时间，格式yyyyMMddHHmmss，开始结束时间需要同一天
+  lastSpaceId    string    否    上一页最后空间id，不传时默认为0
+  pageSize       int       否    分页大小，默认10，范围1-50
+
+响应:
+  data.spacesInfo[]        空间列表
+  data.spacesInfo[].spaceId     int       空间id
+  data.spacesInfo[].totalSize   int       总大小
+  data.spacesInfo[].totalTimePlan int     总时间计划数量
+  data.spacesInfo[].totalEventPlan int    事件计划数量
+  data.spacesInfo[].spaceName   string    空间名称
+  data.spacesInfo[].storageType int       存储类型
+  data.spacesInfo[].expireDays  int       过期时间
+  data.spacesInfo[].primarySpace boolean  是否为主空间
+  data.spacesInfo[].createTime  string    创建时间
+  data.spacesInfo[].updateTime  string    更新时间
+  data.lastSpaceId         int       上一次空间id（下次查询使用）
+  data.pageSize            int       分页大小
+  data.hasNext             boolean   是否有下一页
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": ""},
+    "data": {
+        "spacesInfo": [{
+            "spaceId": 11, "totalSize": 0, "totalTimePlan": 0, "totalEventPlan": 0,
+            "spaceName": "t", "storageType": 1, "expireDays": 1, "primarySpace": false,
+            "createTime": "2023-11-18 08:27:04", "updateTime": "2023-11-18 08:27:04"
+        }],
+        "lastSpaceId": 11, "pageSize": 2, "hasNext": false
+    }
+}
+
+错误码: 200成功, 500服务器异常, 400参数错误, 412前置条件不满足, 406平台不支持的操作
+
+----------------------------------------------------------------
+2.4 修改加密录制项目信息
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/space
+请求方式: PUT
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  expireDays     int       否    过期天数，范围0-3650，0代表永久（expireDays与spaceName必填一个）
+  spaceName      string    否    录像空间名称，仅支持中文、英文、数字、下划线，长度不超过32个字符
+  spaceId        long      是    录像空间id
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+2.5 删除加密录制项目
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/space
+请求方式: DELETE
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  spaceId        string    是    制空间id
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误, 412前置条件不满足, 406平台不支持的操作
+
+
+================================================================
+三、模板管理
+================================================================
+
+注意：每个账号允许的模板数量最多不超过100个
+
+----------------------------------------------------------------
+3.1 模板创建
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloud/video/template/add
+请求方式: POST
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken         string    是    萤石开放API访问令牌
+
+请求Body:
+  templateName        string    是    模板名称
+  format              string    是    转封装格式(HLS;mp4)
+  spaceId             long      是    存储空间ID
+  keepPsStream        int       否    是否保存PS码流(0否1是)，默认1
+  segmentDuration     int       是    切片时长(秒)，0表示不切分
+  audioFormat         string    是    音频格式(AAC,default)
+
+响应:
+  data.templateId     int       模板id
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+    "data": {"templateId": 75}
+}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+3.2 模板查询
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloud/video/template
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  templateId     long      是    模板id
+
+响应:
+  data.templateId        int       模板id
+  data.templateName      string    模板名称
+  data.templateType      string    模板类型(system:系统预置;custom:自定义)
+  data.format            string    转封装格式(HLS;mp4)
+  data.segmentDuration   int       切片时长(秒)，0表示不切分
+  data.keepPsStream      int       是否保存PS码流(0否1是)，默认1
+  data.spaceId           int       云点播空间id
+  data.spaceName         string    云点播空间名称
+  data.audioFormat       string    音频格式(AAC,default)
+  data.videoCodec        object    视频编码格式
+  data.extraParams       string    扩展参数
+  data.createTime        string    创建时间
+  data.updateTime        string    修改时间
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+    "data": {
+        "templateId": 49, "templateName": "HLS转封装模板", "templateType": "custom",
+        "format": "HLS", "segmentDuration": 0, "keepPsStream": 0,
+        "spaceId": 169, "spaceName": "Test1", "audioFormat": "AAC", "videoCodec": "",
+        "extraParams": "{}", "createTime": "2025-06-03 19:15:33", "updateTime": "2025-06-04 20:24:47"
+    }
+}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+3.3 模板更新
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloud/video/template/update
+请求方式: PUT
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken         string    是    萤石开放API访问令牌
+
+请求Body:
+  templateId          long      是    模版id
+  templateName        string    是    模板名称
+  format              string    是    转封装格式(HLS;mp4)
+  spaceId             long      是    云点播存储空间ID
+  keepPsStream        int       否    是否保存PS码流(0否1是)，默认1
+  segmentDuration     int       是    切片时长(秒)，0表示不切分
+  audioFormat         string    是    音频格式(AAC)
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+3.4 模板删除
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloud/video/template/del
+请求方式: DELETE
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  templateId     long      是    模板id
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+3.5 模板列表
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloud/video/template/list
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  pageSize       int       否    分页大小，默认10，范围1-100
+  pageStart      int       否    页码，默认0
+  templateId     long      否    模板id
+  templateName   string    否    模板名称（模糊搜索）
+
+响应:
+  data.result[]              模板列表
+  data.result[].templateId        int       模板id
+  data.result[].templateName      string    模板名称
+  data.result[].templateType      string    模板类型(system:系统预置;custom:自定义)
+  data.result[].format            string    转封装格式(HLS;mp4)
+  data.result[].segmentDuration   int       切片时长(秒)，0表示不切分
+  data.result[].keepPsStream      int       是否保存PS码流(0否1是)
+  data.result[].spaceId           int       云点播空间id
+  data.result[].spaceName         string    云点播空间名称
+  data.result[].audioFormat       string    音频格式
+  data.result[].createTime        string    创建时间
+  data.result[].updateTime        string    修改时间
+  data.pageStart             int       页码
+  data.pageSize              int       分页大小
+  data.total                 int       总记录条数
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+    "data": {
+        "result": [{
+            "templateId": 1, "templateName": "templateName1", "templateType": "custom",
+            "format": "HLS", "segmentDuration": 20, "keepPsStream": 1,
+            "spaceId": 687, "spaceName": "vodSpace", "audioFormat": "AAC", "videoCodec": "",
+            "extraParams": "{}", "createTime": "2025-05-22 14:51:33", "updateTime": "2025-05-22 15:24:48"
+        }],
+        "pageStart": 0, "pageSize": 10, "total": 1
+    }
+}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+
+================================================================
+四、一次性录制计划管理
+================================================================
+
+----------------------------------------------------------------
+4.1 创建一次性录制计划
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff
+请求方式: POST
+Content-Type: application/json
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  planName             string             是    计划名称，中文、英文、数字、下划线、中划线1-32位
+  spaceId              long               是    空间ID
+  startTime            string             是    开始时间，格式yyyyMMddHHmmss
+  endTime              string             否    结束时间，格式yyyyMMddHHmmss（specifiedEndTime=false时可不传）
+  autoConvertHls       boolean            否    是否自动转换m3u8录像，默认false（即将废弃）
+  autoDelete           boolean            否    是否1天后自动删除，默认false
+  specifiedEndTime     boolean            否    是否指定结束时间，默认true
+  streamType           int                否    1主码流 2子码流，不填默认主码流
+  templateId           long               否    模板ID
+  devIndexInfos        array<object>      是    通道列表，限制1-1000，大于10个通道时异步创建
+  devIndexInfos[].deviceSerial   string   是    设备序列号
+  devIndexInfos[].localIndex     string   是    通道号
+  devIndexInfos[].validateCode   string   否    设备验证码（设备加密且配置了后处理模版时必填）
+
+响应:
+  data.oneOffPlanId        int       一次性计划ID
+  data.planName            string    计划名称
+  data.spaceId             int       空间ID
+  data.startTime           string    开始时间
+  data.endTime             string    结束时间
+  data.planStatus          int       计划状态
+  data.createTime          string    创建时间
+  data.updateTime          string    更新时间
+  data.validDevInfos[]     array     有效设备列表
+  data.invalidDevInfos[]   array     无效设备列表
+  data.templateConfig      object    后处理模板配置信息
+  data.specifiedEndTime    boolean   是否指定结束时间
+
+计划状态(planStatus)说明:
+  1  = 创建中（设备任务创建）
+  2  = 创建失败（任务创建失败）
+  3  = 未开始（计划已创建，未到达开始时间）
+  4  = 进行中（计划已执行）
+  5  = 已终止（计划停止）
+  6  = 终止中
+  7  = 终止失败
+  8  = 删除中
+  9  = 删除失败
+  10 = 异常
+  11 = 已完成
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+    "data": {
+        "oneOffPlanId": 590,
+        "planName": "录制计划_template_20250612_2000_01",
+        "spaceId": 44028,
+        "startTime": "2025-06-13 20:30:30",
+        "endTime": "2025-06-13 20:35:30",
+        "planStatus": 3,
+        "createTime": "2025-06-13 12:56:42",
+        "updateTime": "2025-06-13 12:56:42",
+        "validDevInfos": [{"deviceSerial": "BC3055114", "localIndex": "1"}],
+        "invalidDevInfos": [],
+        "templateConfig": {
+            "templateId": 6, "templateName": "templateName2025-06-11-001-up",
+            "templateType": "custom", "format": "mp4", "segmentDuration": 1800,
+            "keepPsStream": 1, "spaceId": 44130, "spaceName": "云点播_001",
+            "audioFormat": "default"
+        },
+        "specifiedEndTime": true
+    }
+}
+
+错误码: 200成功, 500服务器异常, 400参数错误, 412前置条件不满足, 406平台不支持的操作
+
+----------------------------------------------------------------
+4.2 终止一次性录制计划
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/stop
+请求方式: POST
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken      string    是    萤石开放API访问令牌
+
+请求Body:
+  oneOffPlanId     long      是    一次性计划ID
+  onlyStopPreview  boolean   否    是否仅停止预览，默认false
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误, 412前置条件不满足
+
+----------------------------------------------------------------
+4.3 查询一次性录制计划
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  oneOffPlanId   string    是    一次性计划ID
+
+响应:
+  data.oneOffPlanId        int       一次性计划ID
+  data.planName            string    计划名称
+  data.spaceId             int       空间ID
+  data.startTime           string    开始时间 yyyy-MM-DD HH:mm:ss
+  data.endTime             string    结束时间 yyyy-MM-DD HH:mm:ss
+  data.planStatus          int       计划状态（同上）
+  data.deviceNum           int       设备数量
+  data.planType            int       计划类型 1=一次性 2=批量 3=即时
+  data.templateConfig      object    模板配置信息
+  data.specifiedEndTime    boolean   是否指定结束时间
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+    "data": {
+        "oneOffPlanId": 5904, "planName": "录制计划_template_20250612_2000_01Up",
+        "spaceId": 44028, "startTime": "2025-06-13 20:30:30", "endTime": "2025-06-13 20:35:30",
+        "planStatus": 3, "deviceNum": 1, "planType": 1, "specifiedEndTime": true
+    }
+}
+
+错误码: 200成功, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+4.4 查询一次性录制计划列表
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/listById
+请求方式: GET
+
+请求Header:
+  accessToken         string    是    萤石开放API访问令牌
+
+请求Query:
+  lastOneOffPlanId    long      是    上一页计划ID
+  pageSize            int       是    分页大小，范围1-50，默认10
+  startTime           string    是    开始时间，格式yyyyMMddHHmmss
+  endTime             string    是    结束时间，格式yyyyMMddHHmmss（必须在同一天）
+  spaceId             long      是    空间ID
+
+响应:
+  data.plansInfo[]               计划列表（字段同4.3查询单个计划）
+  data.lastOneOffPlanId    int       上一页最后计划ID
+  data.pageSize            int       分页大小
+  data.hasNext             boolean   是否有下一页
+
+错误码: 200成功, 404资源不存在, 500服务器异常
+
+----------------------------------------------------------------
+4.5 查询已创建一次性录制计划的设备列表
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/devInfos
+请求方式: POST
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  oneOffPlanId   long      是    一次性计划ID
+
+响应:
+  data[]                       设备列表
+  data[].deviceSerial    string    设备序列号
+  data[].localIndex      string    通道号
+  data[].devPro          int       设备类型
+  data[].trustDevice     boolean   是否为托管设备
+
+错误码: 200成功, 500服务器异常, 400参数错误, 412前置条件不满足, 406平台不支持的操作
+
+----------------------------------------------------------------
+4.6 修改已创建一次性录像计划的设备列表
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff
+请求方式: PUT
+Content-Type: application/json
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body（与创建类似，多了oneOffPlanId）:
+  oneOffPlanId         long               是    单次计划ID
+  planName             string             是    计划名称
+  spaceId              long               是    空间ID
+  startTime            string             是    开始时间
+  endTime              string             是    结束时间
+  templateId           long               否    模板ID
+  specifiedEndTime     boolean            否    是否指定结束时间
+  devIndexInfos        array<object>      是    通道列表
+
+响应: 同创建一次性录制计划
+
+错误码: 200成功, 500服务器异常, 400参数错误, 412前置条件不满足, 406平台不支持的操作
+
+----------------------------------------------------------------
+4.7 删除一次性录制计划
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff
+请求方式: DELETE
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  oneOffPlanId   long      是    单次计划ID
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}, "data": null}
+
+错误码: 200成功, 500服务器异常, 400参数错误, 412前置条件不满足, 406平台不支持的操作
+
+
+================================================================
+五、任务管理
+================================================================
+
+----------------------------------------------------------------
+5.1 录像计划下的任务列表查询
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/task/list
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  planId         long      是    一次性录制计划id
+  pageStart      int       否    页码，默认0
+  pageSize       int       否    分页大小，默认10，范围1-50
+
+响应:
+  data.result[]                  任务列表
+  data.result[].id               long      任务主键id
+  data.result[].planId           long      一次性计划ID
+  data.result[].planType         int       计划类型 1=一次性 2=批量 3=即时
+  data.result[].startTime        string    开始时间
+  data.result[].endTime          string    结束时间
+  data.result[].taskType         int       任务类型 1=预览 2=回放
+  data.result[].taskDetail       string    任务详情
+  data.result[].spaceId          long      云录制2.0空间id
+  data.result[].deviceSerial     string    设备序列号
+  data.result[].localIndex       string    通道号
+  data.result[].cloudTaskId      long      云录制拉流任务id
+  data.result[].taskStatus       int       任务状态
+  data.result[].errorCode        string    错误码
+  data.result[].errorMsg         string    错误信息
+  data.result[].totalSize        long      存储大小(单位B)
+  data.result[].totalDuration    long      时长(秒)
+  data.result[].haveVideos       boolean   是否存在录像片段
+  data.result[].createTime       string    创建时间
+  data.result[].updateTime       string    修改时间
+  data.pageStart                 int       页码
+  data.pageSize                  int       分页大小
+  data.total                     int       总记录条数
+
+任务状态(taskStatus)说明:
+  0 = 未开始
+  1 = 等待中
+  2 = 进行中
+  3 = 暂停中
+  4 = 异常结束
+  5 = 已完成
+  6 = 已取消
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+5.2 根据设备序列号和通道号查询执行中的任务列表
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/oneOff/task/listRunningByDevId
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  deviceSerial   string    是    设备序列号，字符长度100以内
+  localIndex     string    否    设备通道号，4位，默认1
+  startTime      string    是    查询开始时间，格式yyyyMMddHHmmss
+  endTime        string    是    查询结束时间，格式yyyyMMddHHmmss，开始结束时间不能超过90天
+
+响应: data[] 数组，字段同5.1中result[]的字段
+
+错误码: 200成功, 500服务器异常, 400参数错误
+
+----------------------------------------------------------------
+5.3 停止录像计划下的任务
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/plan/task/stop
+请求方式: POST
+Content-Type: application/x-www-form-urlencoded
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Body:
+  id             long      是    任务主键id
+  planId         long      是    计划id
+  spaceId        long      是    空间id
+
+返回示例:
+{"meta": {"code": 200, "message": "操作成功", "moreInfo": null}}
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+
+================================================================
+六、录像播放
+================================================================
+
+播放方案对比:
+  方案1: 集成SDK播放 - 功能齐全，支持私有信息，需集成SDK
+  方案2: 获取RTMP播放地址 - 集成即开即用，无需转封装费用，支持H265，不支持seek拖动
+  方案3: 转封装成m3u8/mp4播放 - 点播效果较佳，需转封装有额外费用，HLS不支持H265
+
+----------------------------------------------------------------
+6.1 加密录像日历查询
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/exist/month
+请求方式: GET
+
+请求Header:
+  deviceSerial   string    是    设备序列号
+  localIndex     string    是    通道号
+  accessToken    string    是    萤石开放API访问令牌
+
+请求Query:
+  spaceId        string    是    空间id，不填默认查询主空间下录像日历
+  month          string    是    查询月份，格式yyyyMM
+
+响应:
+  data           array<string>    有录像的日期列表
+
+返回示例:
+{
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null},
+    "data": ["2023-11-27", "2023-11-29", "2023-11-30"]
+}
+
+错误码: 200成功
+
+----------------------------------------------------------------
+6.2 录像信息查询
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/info/list
+请求方式: GET
+
+请求Header:
+  localIndex     string    是    通道号
+  accessToken    string    是    萤石开放API访问令牌
+  deviceSerial   string    是    设备序列号
+
+请求Query:
+  startTime      string    是    开始时间，格式yyyy-MM-dd HH:mm:ss
+  endTime        string    是    结束时间，格式yyyy-MM-dd HH:mm:ss，不允许跨天
+  spaceId        long      是    空间ID
+
+响应:
+  data[]                       录像信息列表
+  data[].fileId          string    文件ID
+  data[].spaceId         long      空间ID
+  data[].deviceSerial    string    设备序列号
+  data[].channelNo       string    设备通道号
+  data[].ownerId         string    文件所有者ID
+  data[].fileType        int       文件类型
+  data[].cloudType       int       云存储类型
+  data[].fileIndex       string    文件索引
+  data[].startTime       string    文件开始时间
+  data[].stopTime        string    文件结束时间
+  data[].fileSize        long      文件大小
+  data[].videoLong       int       视频时长(ms)
+  data[].coverPic        string    封面图URL
+  data[].downloadPath    string    下载路径
+  data[].istorageVersion int       1=单文件存储 2=连续存储
+
+错误码: 200成功
+
+----------------------------------------------------------------
+6.3 播放加密录像（获取播放地址）
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/lapp/v2/live/address/get
+请求方式: POST
+
+请求Body:
+  accessToken      string    是    accessToken
+  deviceSerial     string    是    设备序列号
+  channelNo        int       否    通道号，默认1
+  protocol         int       否    流播放协议，1=ezopen（云录制仅支持1）
+  code             string    否    设备加密密码
+  type             string    是    地址类型，3=云存储录像回放（必选）
+  startTime        string    是    回放开始时间，格式yyyy-MM-dd HH:mm:ss（必须在同一天）
+  stopTime         string    是    回放结束时间，格式yyyy-MM-dd HH:mm:ss
+  playbackSpeed    int       否    回放倍速 1/2/4/8，-1为最大倍速
+  busType          int       是    云端录像类型，默认0；7=云录制录像（云录制仅支持ezopen协议）
+
+响应:
+  code           string    状态码，200=成功
+  msg            string    状态描述
+  data.url       string    播放地址（ezopen协议）
+  data.expireTime string   直播地址有效期
+
+返回示例:
+{
+    "msg": "操作成功", "code": "200",
+    "data": {
+        "id": "558005911715250176",
+        "url": "ezopen://open.ys7.com/C33368372/1.cloud.rec?busType=7",
+        "expireTime": "2023-03-21 19:16:16"
+    }
+}
+
+注意: 传入UIKIT时需拼接spaceId: url+"&spaceId=xxx"
+
+错误码: 200成功
+
+----------------------------------------------------------------
+6.4 获取云录制回放地址（RTMP）
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/media/cloud/replay/address
+请求方式: GET
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+  deviceSerial   string    是    设备序列号
+  localIndex     int       否    通道号，默认1
+
+请求Query:
+  protocol       int       否    1=rtmp（默认）
+  expireTime     int       否    过期时长(秒)，最小30秒，最大720天，默认1天
+  startTime      string    是    回放开始时间，格式yyyy-MM-dd HH:mm:ss
+  stopTime       string    是    回放结束时间，格式yyyy-MM-dd HH:mm:ss
+  quality        int       否    视频清晰度 1=高清(默认) 2=流畅（云录制场景无效）
+  supportH265    int       否    是否支持H265，0=不支持(默认)，1=支持
+  playbackSpeed  float     否    回放倍速：0.5, 1, 2, 3, 4
+  spaceId        long      是    云录制空间ID
+
+响应:
+  data.id        string    播放地址id
+  data.url       string    RTMP播放地址
+  data.expireTime string   过期时间
+
+返回示例:
+{
+    "data": {
+        "id": "730472070632452096",
+        "url": "rtmp://test12tcp.ys7.com:1935/v3/openpb/...",
+        "expireTime": "2024-07-09 17:15:13"
+    },
+    "meta": {"code": 200, "message": "操作成功", "moreInfo": null}
+}
+
+错误码: 200成功, 10001参数错误, 404资源不存在, 50000服务异常
+
+
+================================================================
+七、录像删除
+================================================================
+
+----------------------------------------------------------------
+7.1 删除云录制2.0录像片段
+----------------------------------------------------------------
+接口URL: https://open.ys7.com/api/service/cloudrecord/video/infos/delete
+请求方式: POST
+限制: 一批删除数量上限为30个
+
+请求Header:
+  accessToken    string    是    萤石开放API访问令牌
+  deviceSerial   string    是    设备序列号
+  localIndex     string    是    设备通道号
+
+请求Body:
+  startTime      string    是    开始时间，格式yyyy-MM-dd HH:mm:ss
+  endTime        string    是    结束时间，格式yyyy-MM-dd HH:mm:ss，不允许跨天
+  spaceId        long      是    空间ID
+
+响应:
+  data.videos[]            已删除的录像列表
+  data.hasNext       boolean   是否还有录像未删除
+
+错误码: 200成功, 404资源不存在, 500服务器异常, 400参数错误
+
+
+================================================================
+八、云录制2.0常见错误码
+================================================================
+
+----------------------------------------------------------------
+8.1 设备端和取流库错误码
+----------------------------------------------------------------
+错误码    错误描述                              解决方案
+5402    回放找不到录像文件                      检查是否有存储卡且接触良好
+5403    操作码或信令密钥与设备不匹配
+5404    设备不在线                              检查设备网络，重启设备接入萤石云
+5405    流媒体向设备发送或接受信令超时            检查设备网络，重启设备
+5406    token失效                               刷新重试或重启设备
+5407    客户端URL格式错误                       刷新重试
+5409    预览开启隐私保护
+5411    token无权限                             检查权限
+5413    验证token异常                           刷新重试
+5415    设备通道错                              刷新重试
+5416    设备资源受限                            刷新重试
+5451    设备不支持的码流类型                    刷新重试或切换到高清模式
+5452    设备连接流媒体服务器失败                检查设备网络，重启设备
+5454    流媒体中关于设备取流会话不存在           检查设备网络
+5455    设备通道未关联                          检查设备通道是否关联
+5456    设备通道关联设备不在线                  检查设备通道是否上线
+5457    客户端不支持端到端加密                  检查设备加密
+5458    设备不支持当前并发ECDH密                检查设备加密
+5491    相同请求正在处理，拒绝本次处理
+5500    服务器处理失败                          刷新重试
+5501    媒体服务(vtm)构造级联失败               稍后重试
+5503    媒体服务(vtm)返回分配vtdu失败           稍后重试
+5504    流媒体vtdu达到最大负载                  稍后重试
+5544    设备返回无视频源                        检查设备接触
+5545    视频分享时间已经结束
+5546    媒体服务vtdu达到取流并发路数限制         升级企业版
+5556    ticket校验失败
+5557    回放服务器等待流头超时                  刷新重试，检查设备网络
+5558    回放时间段异常
+6103    cas/设备返回错误1                       刷新重试
+6106    设备返回错误码4                         刷新重试
+6110    设备信令默认错误                        刷新重试或重启设备
+6519    设备推流链路网络不稳定（长时间未推流）    检测设备网络，重启设备
+6520    设备推流链路网络不稳定(默认)             检测设备网络，重启设备
+7005    流媒体vtdu断开连接                      检查设备网络
+
+----------------------------------------------------------------
+8.2 服务内部错误码
+----------------------------------------------------------------
+错误码    错误描述
+-1      内部错误（加入任务队列失败、二方库初始化失败）
+-2      重复任务
+-3      取流超时
+-4      只收到流头数据
+-5      文件上传失败（码流时间异常）
+-6      切片大小超过30MB（码率过大或时间异常）
+-7      切片丢弃（切片上传任务队列溢出）
+-9      请求参数错误
+-10     spgw连接失败
+-11     流头数据异常
+-12     码流数据错误
+-13     校验session错误
+-16     设备时间戳异常（预览录像时间跳变到过去15分钟以上）
+
+
+================================================================
+九、录制结果回调消息
+================================================================
+
+前提条件: 在消息推送控制台开通消息推送服务，并勾选云录制消息
+消息类型: ys.open.cloud
+
+----------------------------------------------------------------
+9.1 计划消息
+----------------------------------------------------------------
+messageType: plan_info_result
+
+header.type          String    消息类型：ys.open.cloud
+header.deviceId      String    设备序列号
+header.channelNo     Integer   设备通道号
+header.messageId     String    消息唯一ID
+header.messageTime   Long      消息发送时间
+
+body.messageType     String    计划信息（plan_info_result）
+body.planId          Long      计划id
+body.planName        String    计划名称
+body.planType        Integer   计划类型 1=一次性 2=批量
+body.planStatus      Integer   计划状态（同planStatus定义）
+body.planStartTime   Date      计划开始时间
+body.planEndTime     Date      计划结束时间
+
+----------------------------------------------------------------
+9.2 任务消息
+----------------------------------------------------------------
+messageType: task_remind_pull_storage
+
+body.planId              Long      计划id
+body.planType            Integer   计划类型 1=一次性 2=批量
+body.taskType            Integer   任务类型 1=预览 2=回放
+body.devId               String    设备序列号
+body.channelNo           Integer   通道号
+body.assignmentType      Integer   任务类型 9=云录制
+body.createTime          Long      任务创建时间
+body.updateTime          Long      任务更新时间
+body.videosBeginTime     Long      视频录制开始时间
+body.videosEndTime       Long      视频录制结束时间
+body.assignmentStatus    Integer   1=任务开始 4=任务结束 5=任务取消 6=任务异常
+body.planStartTime       Long      计划开始时间
+body.planEndTime         Long      计划结束时间
+body.errorCode           Integer   错误码
+
+----------------------------------------------------------------
+9.3 转封装任务消息
+----------------------------------------------------------------
+messageType: video_transcode
+
+body.userId        String    用户id
+body.taskId        String    任务id
+body.errorCode     String    错误码
+body.errorMsg      String    错误信息
+body.taskStatus    String    任务状态: COMPLETE(0), PROCESSING(2), EXCEPTION_FAILED(4), NOT_START(7)
+
+----------------------------------------------------------------
+9.4 转封装子任务消息
+----------------------------------------------------------------
+messageType: video_transcode_sub
+
+body.taskId        String    任务id
+body.errorCode     String    错误码
+body.errorMsg      String    错误信息
+body.startTime     Long      转封装开始时间(毫秒)
+body.endTime       Long      转封装结束时间(毫秒)
+body.taskStatus    String    任务状态
+
+----------------------------------------------------------------
+9.5 转封装子任务文件消息
+----------------------------------------------------------------
+messageType: video_transcode_sub_file
+
+body.taskId        String    任务id
+body.startTime     Long      转封装开始时间(毫秒)
+body.endTime       Long      转封装结束时间(毫秒)
+body.taskStatus    String    任务状态
+body.tagId         String    标签id（转封装任务=任务id，云录制2.0后处理模板=计划id）
+body.fileNodeIds   List<String>  转封装的云点播文件节点集合

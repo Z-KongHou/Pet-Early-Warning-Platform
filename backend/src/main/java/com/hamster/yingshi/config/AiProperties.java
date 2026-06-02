@@ -12,4 +12,5 @@ public class AiProperties {
     private String apiUrl;
     private String apiKey;
     private Integer timeout;
+    private String serviceUrl = "http://127.0.0.1:8000";
 }

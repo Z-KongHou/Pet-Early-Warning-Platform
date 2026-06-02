@@ -9,7 +9,9 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "recording")
 public class RecordingProperties {
     private boolean enabled = true;
-    private int durationSeconds = 60;
-    private String storagePath = "./video";
-    private String ffmpegPath = "ffmpeg";
+    private int durationSeconds = 300;
+    private Long spaceId;
+    private Long templateId;
+    private String spaceName = "hamster_default";
+    private int expireDays = 7;
 }
