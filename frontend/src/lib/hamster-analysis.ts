@@ -24,70 +24,57 @@ export type HamsterAnalyzeResult = {
   camera_id: string;
 };
 
-/** 连续抓帧数量与间隔（秒），用于一次分析内建立运动检测所需的历史帧 */
+/** 连续抓帧数量与间隔，用于 3 分钟窗口内的帧间运动检测 */
 export const ANALYSIS_FRAME_COUNT = 3;
 export const ANALYSIS_FRAME_INTERVAL_MS = 1000;
-/** 与后端 MAX_BATCH_IMAGES 一致 */
-export const ANALYSIS_MAX_UPLOAD_IMAGES = 20;
+/** 后端分析抽样上限（超过则在 3 分钟窗口内随机抽取） */
+export const ANALYSIS_MAX_SAMPLE_FRAMES = 20;
 
-export type HamsterBatchAnalyzeResponse = {
-  results: Array<{
-    index: number;
-    success: boolean;
-    has_pet?: boolean;
-    is_moving?: boolean;
-    is_in_food_bowl?: boolean;
-    food_status?: string;
-    anomaly?: HamsterAnomaly;
-    confidence?: number;
-    activity_score?: number;
-    activity_status?: string;
-    analysis_result?: string;
-    error?: string;
-  }>;
+type HamsterAnalyzeApiResult = {
+  success: boolean;
+  has_pet: boolean;
+  is_moving: boolean;
+  is_in_food_bowl?: boolean;
+  food_status?: string;
+  anomaly?: HamsterAnomaly;
+  confidence?: number;
+  activity_score?: number;
+  activity_status?: string;
+  activity_description?: string;
+  analysis_result?: string;
+};
+
+type HamsterAnalyzeApiResponse = {
+  result: HamsterAnalyzeApiResult;
   summary: {
-    success_count: number;
-    failed_count: number;
+    total_uploaded: number;
+    ingested_count: number;
+    candidates_in_window: number;
+    sampled_count: number;
+    sampled: boolean;
   };
 };
 
-function activityDescription(score: number): string {
-  if (score >= 80) return "仓鼠活动频繁，较为活跃";
-  if (score >= 60) return "仓鼠活动正常";
-  if (score >= 40) return "仓鼠活动较少，建议关注";
-  return "仓鼠活动异常，需要检查";
-}
-
-export function pickFinalAnalyzeResult(
-  batch: HamsterBatchAnalyzeResponse,
+function toHamsterAnalyzeResult(
+  r: HamsterAnalyzeApiResult,
   cameraId: number
 ): HamsterAnalyzeResult {
-  const successful = batch.results.filter((r) => r.success);
-  const picked =
-    [...successful].reverse().find((r) => r.has_pet) ?? successful.at(-1);
-  if (!picked) {
-    const failed = batch.results.filter((r) => !r.success);
-    const err =
-      failed.map((r) => r.error).filter(Boolean).join("；") ||
-      "分析失败，未得到有效结果";
-    throw new Error(err);
-  }
-  const score = picked.activity_score ?? 0;
+  const score = r.activity_score ?? 0;
   return {
-    has_pet: picked.has_pet ?? false,
+    has_pet: r.has_pet,
     pet_type: "仓鼠",
     position: null,
-    is_moving: picked.is_moving ?? false,
-    is_eating: picked.is_in_food_bowl ?? false,
-    food_status: picked.food_status ?? "未知",
+    is_moving: r.is_moving,
+    is_eating: r.is_in_food_bowl ?? false,
+    food_status: r.food_status ?? "未知",
     blue_ratio: null,
-    anomaly: picked.anomaly ?? { long_stationary: false, no_eating: false },
-    confidence: picked.confidence ?? 0,
+    anomaly: r.anomaly ?? { long_stationary: false, no_eating: false },
+    confidence: r.confidence ?? 0,
     image_time: null,
     activity_score: score,
-    activity_status: picked.activity_status ?? "normal",
-    description: activityDescription(score),
-    analysis_result: picked.analysis_result ?? "",
+    activity_status: r.activity_status ?? "normal",
+    description: r.activity_description ?? "",
+    analysis_result: r.analysis_result ?? "",
     camera_id: String(cameraId),
   };
 }
@@ -103,20 +90,16 @@ export async function analyzeHamsterImages(
   }
   form.append("camera_id", String(cameraId));
 
-  const batch = await apiFetch<HamsterBatchAnalyzeResponse>("/api/hamster/analyze", {
+  const data = await apiFetch<HamsterAnalyzeApiResponse>("/api/hamster/analyze", {
     method: "POST",
     body: form,
     headers,
   });
-  return pickFinalAnalyzeResult(batch, cameraId);
-}
 
-export async function analyzeHamsterImage(
-  file: File,
-  cameraId: number,
-  headers?: Record<string, string>
-): Promise<HamsterAnalyzeResult> {
-  return analyzeHamsterImages([file], cameraId, headers);
+  if (!data.result?.success) {
+    throw new Error("分析失败，未得到有效结果");
+  }
+  return toHamsterAnalyzeResult(data.result, cameraId);
 }
 
 export function sleep(ms: number): Promise<void> {

@@ -7,7 +7,6 @@ import { ApiError } from "@/lib/http";
 import {
   ANALYSIS_FRAME_COUNT,
   ANALYSIS_FRAME_INTERVAL_MS,
-  ANALYSIS_MAX_UPLOAD_IMAGES,
   analyzeHamsterImages,
   captureSequentialFrames,
   type HamsterAnalyzeResult,
@@ -98,7 +97,7 @@ export function HamsterLiveAnalysis({ cameraId, playerRef, maxHeight }: HamsterL
 
   const setUploadedReferences = useCallback(
     (files: File[]) => {
-      const images = pickImageFiles(files).slice(0, ANALYSIS_MAX_UPLOAD_IMAGES);
+      const images = pickImageFiles(files);
       if (images.length === 0) return;
       setUploadedFiles(images);
       setPreviewBlob(images[images.length - 1]!);

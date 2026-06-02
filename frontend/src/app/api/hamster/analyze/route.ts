@@ -24,7 +24,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json(
       {
         code: 50201,
-        message: "无法连接分析服务，请确认 ai-old 已在 8000 端口启动",
+        message: "无法连接分析服务，请确认 ai 服务已在 8000 端口启动（cd ai && poetry run yingshi-ai）",
         data: null,
       },
       { status: 502 }

@@ -6,7 +6,7 @@ compatibility: Requires git, MySQL 8 client (Windows), pnpm, PowerShell. Snapsho
 
 # Yingshi Latest Sync
 
-Workflow for keeping the **main monorepo** (`backend/`, `frontend/`, `docs/`) aligned with **`latest/yingshi/`**, while preserving monorepo-only modules (`ai/`, `ai-old/`).
+Workflow for keeping the **main monorepo** (`backend/`, `frontend/`, `docs/`) aligned with **`latest/yingshi/`**, while preserving monorepo-only module `ai/`.
 
 Read `references/project-conventions.md` and `references/api-keys-policy.md` before changing config.
 

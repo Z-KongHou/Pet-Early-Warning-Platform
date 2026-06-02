@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.env.local
+dist/
+build/
+*.egg-info/
+.poetry/
+.ruff_cache/
+.pytest_cache/
+pet_analysis.db
+upload/*
+!upload/.gitkeep

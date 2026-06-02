@@ -6,8 +6,7 @@
 yingshi/                    # main monorepo (git root)
 ├── backend/                # Spring Boot 2.7, port 8081
 ├── frontend/               # Next.js 16, port 3000
-├── ai/                     # Python FastAPI (monorepo only, NOT in latest snapshot)
-├── ai-old/                 # legacy AI (monorepo only)
+├── ai/                     # Python FastAPI 仓鼠分析 + RAG（monorepo only, NOT in latest snapshot）
 ├── docs/
 ├── .cursor/skills/         # project skills (this skill lives here)
 └── latest/
@@ -49,7 +48,6 @@ Never commit alternate local passwords from upstream snapshots (e.g. `Gyp2005121
 | Path | Reason |
 |------|--------|
 | `ai/` | Exists only in monorepo |
-| `ai-old/` | Exists only in monorepo |
 | `latest/` | Snapshot container |
 
 ## Video files
