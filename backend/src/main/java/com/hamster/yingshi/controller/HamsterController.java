@@ -41,7 +41,8 @@ public class HamsterController {
 
     @GetMapping
     public Result<Map<String, Object>> list() {
-        List<Hamster> hamsters = hamsterService.findAll();
+        Integer userId = securityUtils.getCurrentUserId();
+        List<Hamster> hamsters = hamsterService.findByUserId(userId);
         List<Map<String, Object>> list = hamsters.stream().map(h -> {
             Map<String, Object> item = new java.util.HashMap<>();
             item.put("id", h.getId());

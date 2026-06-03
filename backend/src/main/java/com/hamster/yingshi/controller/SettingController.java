@@ -4,6 +4,7 @@ import com.hamster.yingshi.common.Result;
 import com.hamster.yingshi.dto.SettingRequest;
 import com.hamster.yingshi.entity.Setting;
 import com.hamster.yingshi.service.SettingService;
+import com.hamster.yingshi.utils.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -15,9 +16,13 @@ public class SettingController {
     @Autowired
     private SettingService settingService;
 
+    @Autowired
+    private SecurityUtils securityUtils;
+
     @GetMapping
     public Result<List<Setting>> list() {
-        return Result.success(settingService.findAll());
+        Integer userId = securityUtils.getCurrentUserId();
+        return Result.success(settingService.findByUserId(userId));
     }
 
     @GetMapping("/{keyName}")

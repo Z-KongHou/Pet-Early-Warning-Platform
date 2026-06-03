@@ -30,6 +30,17 @@ public class ActivityHistoryService {
         return activityHistoryMapper.selectPage(pageParam, wrapper);
     }
 
+    public Page<ActivityHistory> findPageByUserId(Integer page, Integer size, Integer userId, Integer hamsterId, LocalDateTime startDate, LocalDateTime endDate) {
+        Page<ActivityHistory> pageParam = new Page<>(page, size);
+        LambdaQueryWrapper<ActivityHistory> wrapper = new LambdaQueryWrapper<ActivityHistory>()
+            .eq(ActivityHistory::getUserId, userId)
+            .eq(hamsterId != null, ActivityHistory::getHamsterId, hamsterId)
+            .ge(startDate != null, ActivityHistory::getCreatedAt, startDate)
+            .le(endDate != null, ActivityHistory::getCreatedAt, endDate)
+            .orderByDesc(ActivityHistory::getCreatedAt);
+        return activityHistoryMapper.selectPage(pageParam, wrapper);
+    }
+
     public List<ActivityHistory> findByHamsterId(Integer hamsterId, Integer days) {
         LocalDateTime startDate = LocalDateTime.now().minusDays(days);
         return activityHistoryMapper.selectList(

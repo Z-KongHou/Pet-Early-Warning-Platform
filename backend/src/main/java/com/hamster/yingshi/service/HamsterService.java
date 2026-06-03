@@ -42,6 +42,15 @@ public class HamsterService {
         );
     }
 
+    public List<Hamster> findByUserId(Integer userId) {
+        return hamsterMapper.selectList(
+            new LambdaQueryWrapper<Hamster>()
+                .eq(Hamster::getUserId, userId)
+                .eq(Hamster::getIsDeleted, 0)
+                .orderByDesc(Hamster::getCreatedAt)
+        );
+    }
+
     public Page<Hamster> findPage(Integer page, Integer size) {
         Page<Hamster> pageParam = new Page<>(page, size);
         return hamsterMapper.selectPage(pageParam,

@@ -2,6 +2,7 @@ package com.hamster.yingshi.common;
 
 public class ErrorCode {
     public static final Integer PARAM_ERROR = 40001;
+    public static final Integer BAD_REQUEST = 40002;
     public static final Integer UNAUTHORIZED = 40101;
     public static final Integer HAMSTER_NOT_FOUND = 40401;
     public static final Integer CAMERA_NOT_FOUND = 40402;

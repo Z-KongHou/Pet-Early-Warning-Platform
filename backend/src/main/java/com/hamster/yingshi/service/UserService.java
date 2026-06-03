@@ -22,6 +22,10 @@ public class UserService {
         return userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, username));
     }
 
+    public User findByEmail(String email) {
+        return userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email));
+    }
+
     public User findById(Integer id) {
         return userMapper.selectById(id);
     }
