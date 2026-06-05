@@ -20,7 +20,7 @@ public class UserDetailsImpl implements UserDetails {
     }
 
     public static UserDetailsImpl build(User user) {
-        return new UserDetailsImpl(user.getId(), user.getUsername(), user.getPasswordHash());
+        return new UserDetailsImpl(user.getUserId(), user.getUsername(), user.getPasswordHash());
     }
 
     @Override

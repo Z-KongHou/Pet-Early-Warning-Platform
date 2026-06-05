@@ -89,7 +89,7 @@ public class FrameCaptureService {
         }
 
         // 4. 解析结果并入库
-        saveAnalysisResult(camera.getId(), analysisResult);
+        saveAnalysisResult(camera, analysisResult);
     }
 
     /**
@@ -179,10 +179,11 @@ public class FrameCaptureService {
     /**
      * 解析 AI 分析结果并保存到 pet_analysis 表
      */
-    private void saveAnalysisResult(Integer cameraId, JsonNode result) {
+    private void saveAnalysisResult(Camera camera, JsonNode result) {
         try {
             PetAnalysis analysis = new PetAnalysis();
-            analysis.setCameraId(String.valueOf(cameraId));
+            analysis.setUserId(camera.getUserId());
+            analysis.setCameraId(String.valueOf(camera.getId()));
             analysis.setTimestamp(LocalDateTime.now());
             analysis.setHasPet(result.path("has_pet").asBoolean(false) ? 1 : 0);
 
@@ -208,7 +209,7 @@ public class FrameCaptureService {
 
             petAnalysisMapper.insert(analysis);
             log.info("Analysis result saved for camera {}: hasPet={}, movement={}, food={}",
-                    cameraId, analysis.getHasPet(), analysis.getMovementState(), analysis.getFoodState());
+                    camera.getId(), analysis.getHasPet(), analysis.getMovementState(), analysis.getFoodState());
         } catch (Exception e) {
             log.error("Failed to save analysis result: {}", e.getMessage());
         }

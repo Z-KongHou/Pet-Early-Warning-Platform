@@ -32,7 +32,7 @@ public class AuthController {
         if (!userService.validatePassword(user, request.getPassword())) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED, "Invalid username or password");
         }
-        String token = jwtUtils.generateToken(user.getId(), user.getUsername());
+        String token = jwtUtils.generateToken(user.getUserId(), user.getUsername());
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
         data.put("expiresIn", jwtUtils.getExpiration());

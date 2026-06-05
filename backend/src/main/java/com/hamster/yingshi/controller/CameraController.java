@@ -46,6 +46,7 @@ public class CameraController {
     public Result<Camera> create(@RequestBody CameraRequest request) {
         Integer userId = securityUtils.getCurrentUserId();
         Camera camera = new Camera();
+        camera.setUserId(userId);
         camera.setHamsterId(request.getHamsterId());
         camera.setName(request.getName());
         camera.setDeviceKey(request.getDeviceKey());

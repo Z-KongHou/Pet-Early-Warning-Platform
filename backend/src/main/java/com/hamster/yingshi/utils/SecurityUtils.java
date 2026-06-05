@@ -35,7 +35,7 @@ public class SecurityUtils {
     public User getCurrentUser() {
         Integer userId = getCurrentUserId();
         if (userId != null) {
-            return userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, userId));
+            return userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUserId, userId));
         }
         return null;
     }

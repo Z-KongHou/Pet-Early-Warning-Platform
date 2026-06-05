@@ -26,7 +26,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     }
 
     public UserDetails loadUserById(Integer id) {
-        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, id));
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUserId, id));
         if (user == null) {
             throw new UsernameNotFoundException("User not found");
         }

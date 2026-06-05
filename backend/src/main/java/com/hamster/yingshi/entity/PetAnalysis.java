@@ -10,6 +10,8 @@ public class PetAnalysis {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    private Integer userId;
+
     private String cameraId;
 
     private LocalDateTime timestamp;

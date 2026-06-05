@@ -24,7 +24,9 @@ public class AlertController {
 
     @PostMapping
     public Result<Alert> create(@RequestBody AlertRequest request) {
+        Integer userId = securityUtils.getCurrentUserId();
         Alert alert = new Alert();
+        alert.setUserId(userId);
         alert.setHamsterId(request.getHamsterId());
         alert.setActivityStatus(request.getActivityStatus());
         alert.setActivityScore(request.getActivityScore());

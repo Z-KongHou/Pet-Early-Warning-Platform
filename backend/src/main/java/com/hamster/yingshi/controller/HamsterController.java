@@ -4,6 +4,7 @@ import com.hamster.yingshi.common.Result;
 import com.hamster.yingshi.dto.HamsterRequest;
 import com.hamster.yingshi.entity.Hamster;
 import com.hamster.yingshi.service.HamsterService;
+import com.hamster.yingshi.utils.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -18,9 +19,14 @@ public class HamsterController {
     @Autowired
     private HamsterService hamsterService;
 
+    @Autowired
+    private SecurityUtils securityUtils;
+
     @PostMapping
     public Result<Hamster> create(@RequestBody HamsterRequest request) {
+        Integer userId = securityUtils.getCurrentUserId();
         Hamster hamster = new Hamster();
+        hamster.setUserId(userId);
         hamster.setName(request.getName());
         hamster.setBreed(request.getBreed());
         hamster.setBirthDate(request.getBirthDate());
