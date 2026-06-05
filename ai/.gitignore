@@ -11,5 +11,9 @@ build/
 .ruff_cache/
 .pytest_cache/
 pet_analysis.db
+chroma_db/*
+!chroma_db/.gitkeep
+data/*
+!data/.gitkeep
 upload/*
 !upload/.gitkeep

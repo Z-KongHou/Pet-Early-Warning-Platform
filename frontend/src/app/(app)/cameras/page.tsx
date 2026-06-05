@@ -362,6 +362,7 @@ export default function CamerasPage() {
                 <HamsterLiveAnalysis
                   cameraId={activeCamera.id}
                   playerRef={playerRef}
+                  ezvizAccessToken={streamInfo.accessToken}
                   maxHeight={analysisPanelMaxH}
                 />
               )}

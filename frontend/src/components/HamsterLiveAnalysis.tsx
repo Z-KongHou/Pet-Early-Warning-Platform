@@ -15,6 +15,8 @@ import {
 interface HamsterLiveAnalysisProps {
   cameraId: number;
   playerRef: MutableRefObject<EZUIKitPlayerInstance | null>;
+  /** 萤石 accessToken（与直播流同源），用于宠物检测 API */
+  ezvizAccessToken?: string;
   /** 与左侧视频列等高，避免分析结果撑高外层卡片 */
   maxHeight?: number;
 }
@@ -38,7 +40,12 @@ const PROGRESS_PHASE1_TARGET = 42;
 const PROGRESS_PHASE2_RATE_PER_SEC = 5;
 const PROGRESS_PHASE2_MAX = 72;
 
-export function HamsterLiveAnalysis({ cameraId, playerRef, maxHeight }: HamsterLiveAnalysisProps) {
+export function HamsterLiveAnalysis({
+  cameraId,
+  playerRef,
+  ezvizAccessToken,
+  maxHeight,
+}: HamsterLiveAnalysisProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rampFrameRef = useRef<number | null>(null);
   const progressRef = useRef(0);
@@ -166,8 +173,17 @@ export function HamsterLiveAnalysis({ cameraId, playerRef, maxHeight }: HamsterL
     try {
       let data: HamsterAnalyzeResult;
 
+      const analyzeOptions = ezvizAccessToken
+        ? { ezvizAccessToken }
+        : undefined;
+
       if (useUploadedReference) {
-        data = await analyzeHamsterImages(uploadedFiles, cameraId, authHeaders());
+        data = await analyzeHamsterImages(
+          uploadedFiles,
+          cameraId,
+          authHeaders(),
+          analyzeOptions
+        );
       } else {
         const files = await captureSequentialFrames(
           player!,
@@ -175,7 +191,7 @@ export function HamsterLiveAnalysis({ cameraId, playerRef, maxHeight }: HamsterL
           ANALYSIS_FRAME_INTERVAL_MS,
           (_index, file) => setPreviewBlob(file)
         );
-        data = await analyzeHamsterImages(files, cameraId, authHeaders());
+        data = await analyzeHamsterImages(files, cameraId, authHeaders(), analyzeOptions);
       }
 
       await finishProgress();
@@ -199,6 +215,7 @@ export function HamsterLiveAnalysis({ cameraId, playerRef, maxHeight }: HamsterL
     startProgressRamp,
     stopProgressRamp,
     uploadedFiles,
+    ezvizAccessToken,
   ]);
 
   const onFileChange = useCallback(

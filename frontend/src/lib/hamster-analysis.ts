@@ -82,13 +82,17 @@ function toHamsterAnalyzeResult(
 export async function analyzeHamsterImages(
   files: File[],
   cameraId: number,
-  headers?: Record<string, string>
+  headers?: Record<string, string>,
+  options?: { ezvizAccessToken?: string }
 ): Promise<HamsterAnalyzeResult> {
   const form = new FormData();
   for (const file of files) {
     form.append("files", file);
   }
   form.append("camera_id", String(cameraId));
+  if (options?.ezvizAccessToken) {
+    form.append("ezviz_access_token", options.ezvizAccessToken);
+  }
 
   const data = await apiFetch<HamsterAnalyzeApiResponse>("/api/hamster/analyze", {
     method: "POST",

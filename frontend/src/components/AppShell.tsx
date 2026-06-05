@@ -10,6 +10,7 @@ const nav = [
   { href: "/cameras", label: "摄像头" },
   { href: "/activity", label: "活动" },
   { href: "/messages", label: "站内信" },
+  { href: "/chat", label: "AI 问答" },
   { href: "/settings", label: "配置" },
   { href: "/users/me/cameras", label: "我的摄像头" },
 ];

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from interfaces.api.routes import hamster, health
-from interfaces.middlewares.size_limit import SizeLimitMiddleware
+from api.middleware.size_limit import SizeLimitMiddleware
+from api.routes import hamster, health, rag
 
 app = FastAPI(
     title="宠物异常监测系统",
@@ -18,3 +18,4 @@ app = FastAPI(
 app.add_middleware(SizeLimitMiddleware)
 app.include_router(health.router)
 app.include_router(hamster.router)
+app.include_router(rag.router)

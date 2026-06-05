@@ -1,0 +1,7 @@
+# Local SQLite artifacts (Python/Java should not commit these)
+pet_analysis.db
+backend/pet_analysis.db
+frontend/pet_analysis.db
+
+# Upstream snapshot (separate git repo)
+latest/

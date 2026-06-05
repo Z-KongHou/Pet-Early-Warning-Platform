@@ -3,13 +3,13 @@ package com.hamster.yingshi.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hamster.yingshi.config.AiProperties;
+import com.hamster.yingshi.entity.ActivityHistory;
 import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.entity.PetAnalysis;
 import com.hamster.yingshi.mapper.PetAnalysisMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -38,6 +38,9 @@ public class FrameCaptureService {
     private PetAnalysisMapper petAnalysisMapper;
 
     @Autowired
+    private ActivityHistoryService activityHistoryService;
+
+    @Autowired
     private AiProperties aiProperties;
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -64,7 +67,6 @@ public class FrameCaptureService {
      * 对单个摄像头执行抓帧分析
      */
     public void captureAndAnalyze(Camera camera) {
-        // 1. 获取直播流地址
         String streamUrl;
         try {
             streamUrl = ezvizService.getLiveStreamUrlWithRetry(camera);
@@ -73,7 +75,6 @@ public class FrameCaptureService {
             return;
         }
 
-        // 2. 用 FFmpeg 抓取一帧
         byte[] frameBytes = captureFrame(streamUrl);
         if (frameBytes == null || frameBytes.length == 0) {
             log.warn("Failed to capture frame for camera {}", camera.getId());
@@ -81,23 +82,18 @@ public class FrameCaptureService {
         }
         log.info("Frame captured for camera {}: {} bytes", camera.getId(), frameBytes.length);
 
-        // 3. 调用 AI 分析服务
-        JsonNode analysisResult = callAiService(frameBytes, camera.getId());
+        JsonNode analysisResult = callAiService(frameBytes, camera);
         if (analysisResult == null) {
             log.warn("AI analysis failed for camera {}", camera.getId());
             return;
         }
 
-        // 4. 解析结果并入库
         saveAnalysisResult(camera, analysisResult);
+        saveActivityHistory(camera, analysisResult);
     }
 
-    /**
-     * 使用 FFmpeg 从直播流截取一帧图片
-     */
     private byte[] captureFrame(String streamUrl) {
         try {
-            // FFmpeg 从流中截取一帧，输出到 stdout
             ProcessBuilder pb = new ProcessBuilder(
                 "ffmpeg",
                 "-i", streamUrl,
@@ -110,7 +106,6 @@ public class FrameCaptureService {
             pb.redirectErrorStream(false);
             Process process = pb.start();
 
-            // 读取 stdout 获取图片数据
             byte[] frameData;
             try (InputStream is = process.getInputStream();
                  ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -122,7 +117,6 @@ public class FrameCaptureService {
                 frameData = baos.toByteArray();
             }
 
-            // 等待进程结束
             int exitCode = process.waitFor();
             if (exitCode != 0) {
                 log.warn("FFmpeg exited with code {}", exitCode);
@@ -136,10 +130,7 @@ public class FrameCaptureService {
         }
     }
 
-    /**
-     * 调用 Python AI 分析服务
-     */
-    private JsonNode callAiService(byte[] frameBytes, Integer cameraId) {
+    private JsonNode callAiService(byte[] frameBytes, Camera camera) {
         try {
             String targetUrl = aiProperties.getServiceUrl() + "/api/hamster/analyze";
 
@@ -154,21 +145,34 @@ public class FrameCaptureService {
                 }
             };
             body.add("files", fileResource);
-            body.add("camera_id", String.valueOf(cameraId));
+            body.add("camera_id", String.valueOf(camera.getId()));
+            if (camera.getAccessToken() != null && !camera.getAccessToken().isBlank()) {
+                body.add("ezviz_access_token", camera.getAccessToken());
+            }
 
             HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
             ResponseEntity<String> response = restTemplate.exchange(targetUrl, HttpMethod.POST, request, String.class);
 
             JsonNode root = objectMapper.readTree(response.getBody());
             int code = root.path("code").asInt(0);
-            if (code == 200) {
-                JsonNode data = root.path("data");
-                JsonNode results = data.path("results");
-                if (results.isArray() && results.size() > 0) {
-                    return results.get(0);
-                }
+            if (code != 200) {
+                log.warn("AI service returned non-200: code={}, body={}", code, response.getBody());
+                return null;
             }
-            log.warn("AI service returned non-200: code={}, body={}", code, response.getBody());
+
+            JsonNode data = root.path("data");
+            JsonNode result = data.path("result");
+            if (!result.isMissingNode() && result.path("success").asBoolean(false)) {
+                return result;
+            }
+
+            // 兼容旧版 results 数组格式
+            JsonNode results = data.path("results");
+            if (results.isArray() && results.size() > 0) {
+                return results.get(0);
+            }
+
+            log.warn("AI service response missing result: {}", response.getBody());
             return null;
         } catch (Exception e) {
             log.error("Failed to call AI service: {}", e.getMessage());
@@ -176,9 +180,6 @@ public class FrameCaptureService {
         }
     }
 
-    /**
-     * 解析 AI 分析结果并保存到 pet_analysis 表
-     */
     private void saveAnalysisResult(Camera camera, JsonNode result) {
         try {
             PetAnalysis analysis = new PetAnalysis();
@@ -187,15 +188,12 @@ public class FrameCaptureService {
             analysis.setTimestamp(LocalDateTime.now());
             analysis.setHasPet(result.path("has_pet").asBoolean(false) ? 1 : 0);
 
-            // 运动状态
             boolean isMoving = result.path("is_moving").asBoolean(false);
             analysis.setMovementState(isMoving ? "moving" : "stationary");
 
-            // 食物状态
             String foodStatus = result.path("food_status").asText("unknown");
             analysis.setFoodState(foodStatus);
 
-            // 位置信息
             JsonNode position = result.path("position");
             if (position != null && !position.isNull()) {
                 analysis.setPositionX(position.path("x").asInt(0));
@@ -204,14 +202,47 @@ public class FrameCaptureService {
                 analysis.setPositionHeight(position.path("height").asInt(0));
             }
 
-            // 置信度
             analysis.setConfidence(result.path("confidence").asDouble(0));
 
             petAnalysisMapper.insert(analysis);
-            log.info("Analysis result saved for camera {}: hasPet={}, movement={}, food={}",
+            log.info("Pet analysis saved for camera {}: hasPet={}, movement={}, food={}",
                     camera.getId(), analysis.getHasPet(), analysis.getMovementState(), analysis.getFoodState());
         } catch (Exception e) {
-            log.error("Failed to save analysis result: {}", e.getMessage());
+            log.error("Failed to save pet analysis: {}", e.getMessage());
         }
+    }
+
+    private void saveActivityHistory(Camera camera, JsonNode result) {
+        try {
+            ActivityHistory history = new ActivityHistory();
+            history.setUserId(camera.getUserId());
+            history.setHamsterId(camera.getHamsterId());
+            history.setCameraId(camera.getId());
+            history.setActivityScore(result.path("activity_score").asInt(50));
+            history.setStatus(mapActivityStatus(result.path("activity_status").asText("normal")));
+
+            String analysisText = result.path("analysis_result").asText(null);
+            if (analysisText == null || analysisText.isBlank()) {
+                analysisText = result.path("activity_description").asText("");
+            }
+            history.setAnalysisResult(analysisText);
+
+            activityHistoryService.create(history);
+            log.info("Activity history saved for camera {}: score={}, status={}",
+                    camera.getId(), history.getActivityScore(), history.getStatus());
+        } catch (Exception e) {
+            log.error("Failed to save activity history: {}", e.getMessage());
+        }
+    }
+
+    private String mapActivityStatus(String pythonStatus) {
+        if (pythonStatus == null) {
+            return "normal";
+        }
+        return switch (pythonStatus) {
+            case "critical" -> "high";
+            case "low", "high", "normal" -> pythonStatus;
+            default -> "normal";
+        };
     }
 }
