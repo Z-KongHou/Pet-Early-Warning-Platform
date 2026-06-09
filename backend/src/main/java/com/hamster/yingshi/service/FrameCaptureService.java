@@ -239,10 +239,15 @@ public class FrameCaptureService {
         if (pythonStatus == null) {
             return "normal";
         }
-        return switch (pythonStatus) {
-            case "critical" -> "high";
-            case "low", "high", "normal" -> pythonStatus;
-            default -> "normal";
-        };
+        switch (pythonStatus) {
+            case "critical":
+                return "high";
+            case "low":
+            case "high":
+            case "normal":
+                return pythonStatus;
+            default:
+                return "normal";
+        }
     }
 }
