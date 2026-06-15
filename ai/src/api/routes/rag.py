@@ -14,9 +14,9 @@ from api.schemas.rag import (
     QueryResponse,
     SourceCitationSchema,
 )
-from services.rag.chat_history import ChatTurn
-from services.rag.ingest_service import IngestService
-from services.rag.query_service import QueryService
+from services.rag.utils.history import ChatTurn
+from services.rag.orchestration.ingest import IngestService
+from services.rag.orchestration.query import QueryService
 from utils.response import error_response, success_response
 from utils.sse import format_sse
 
@@ -79,7 +79,6 @@ async def rag_query(
                 llm_model=result.llm_model,
                 detected_language=result.detected_language,
                 english_question=result.english_question,
-                translate_model=result.translate_model,
                 sources=[
                     SourceCitationSchema(
                         source=s.source,

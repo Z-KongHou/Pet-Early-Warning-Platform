@@ -70,8 +70,8 @@ class Settings:
     upload_dir_name: str = os.getenv("PET_UPLOAD_DIR", "upload")
     rag_data_dir: str = os.getenv("RAG_DATA_DIR", "data")
     chroma_persist_dir: str = os.getenv("CHROMA_PERSIST_DIR", "chroma_db")
-    rag_chunk_size: int = int(os.getenv("RAG_CHUNK_SIZE", "1200"))
-    rag_chunk_overlap: int = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
+    rag_chunk_size: int = int(os.getenv("RAG_CHUNK_SIZE", "512"))
+    rag_chunk_overlap: int = int(os.getenv("RAG_CHUNK_OVERLAP", "100"))
     rag_chunk_min_chars: int = int(os.getenv("RAG_CHUNK_MIN_CHARS", "50"))
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     ollama_embed_model: str = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
@@ -95,10 +95,45 @@ class Settings:
     llm_temperature: float = float(
         _env_first("LLM_TEMPERATURE", "DEEPSEEK_TEMPERATURE", default="0.2")
     )
-    rag_top_k: int = int(os.getenv("RAG_TOP_K", "4"))
-    rag_max_distance: float = float(os.getenv("RAG_MAX_DISTANCE", "1.2"))
+    rag_top_k: int = int(os.getenv("RAG_TOP_K", "12"))
+    rag_max_distance: float = float(os.getenv("RAG_MAX_DISTANCE", "1.5"))
     rag_chat_max_turns: int = int(os.getenv("RAG_CHAT_MAX_TURNS", "6"))
     rag_chat_max_history_tokens: int = int(os.getenv("RAG_CHAT_MAX_HISTORY_TOKENS", "2000"))
+
+    # Day 1+ Hybrid RAG feature flags (default off for safe rollout)
+    rag_query_rewrite_enabled: bool = os.getenv("RAG_QUERY_REWRITE_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    rag_query_rewrite_max_queries: int = int(os.getenv("RAG_QUERY_REWRITE_MAX_QUERIES", "3"))
+
+    # Day 2 Hybrid RAG: BM25 + RRF (default off for safe rollout)
+    rag_hybrid_enabled: bool = os.getenv("RAG_HYBRID_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    rag_vector_top_n: int = int(os.getenv("RAG_VECTOR_TOP_N", "20"))
+    rag_bm25_top_n: int = int(os.getenv("RAG_BM25_TOP_N", "20"))
+    rag_rrf_k: int = int(os.getenv("RAG_RRF_K", "60"))
+
+    # Day 3 Rerank (LLM-based as default; cross-encoder when torch/sentence-transformers available)
+    rag_rerank_enabled: bool = os.getenv("RAG_RERANK_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    rag_rerank_backend: str = os.getenv("RAG_RERANK_BACKEND", "llm")  # "llm" or "cross_encoder"
+    rag_rerank_top_n: int = int(os.getenv("RAG_RERANK_TOP_N", "5"))
+    rag_rerank_candidate_n: int = int(os.getenv("RAG_RERANK_CANDIDATE_N", "20"))
+
+    # Agent mode: LLM-driven tool-calling instead of fixed RAG pipeline
+    rag_agent_enabled: bool = os.getenv("RAG_AGENT_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     @property
     def base_dir(self) -> Path:

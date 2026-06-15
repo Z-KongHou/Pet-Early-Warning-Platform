@@ -17,7 +17,7 @@ type ChatMessage = {
   streaming?: boolean;
   meta?: Pick<
     RagQueryResult,
-    "llm_model" | "detected_language" | "english_question" | "translate_model"
+    "llm_model" | "detected_language" | "english_question"
   >;
 };
 
@@ -112,7 +112,6 @@ export default function ChatPage() {
               llm_model: result.llm_model,
               detected_language: result.detected_language,
               english_question: result.english_question,
-              translate_model: result.translate_model,
             },
           });
         },
@@ -191,9 +190,6 @@ export default function ChatPage() {
                   {m.role === "assistant" && !m.streaming && m.meta?.llm_model ? (
                     <p className="mt-2 text-[11px] text-zinc-400">
                       {m.meta.llm_model}
-                      {m.meta.translate_model
-                        ? ` · 翻译 ${m.meta.translate_model}`
-                        : null}
                     </p>
                   ) : null}
                 </div>

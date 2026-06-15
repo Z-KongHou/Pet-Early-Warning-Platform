@@ -1,1 +1,1 @@
-"""RAG application services: ingest, retrieval, and query."""
+"""RAG services — ingest, retrieval, orchestration, prompts, and utilities."""

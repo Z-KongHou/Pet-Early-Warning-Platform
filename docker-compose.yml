@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  # ── Ollama (embedding + LLM) ──
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── AI 服务 (FastAPI) ──
+  ai:
+    build: ./ai
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    env_file:
+      - ./ai/.env
+    volumes:
+      - ./ai/data:/app/data
+      - ./ai/chroma_db:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── 前端 (Next.js) ──
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      ai:
+        condition: service_healthy
+    environment:
+      - AI_SERVICE_URL=http://ai:8000
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

@@ -20,7 +20,6 @@ export type RagQueryResult = {
   llm_model: string;
   detected_language: string;
   english_question?: string | null;
-  translate_model?: string | null;
 };
 
 export type RagStreamMeta = {
@@ -168,20 +167,6 @@ export async function queryRagStream(
     if (e instanceof DOMException && e.name === "AbortError") return;
     handlers.onError?.(e instanceof Error ? e.message : "流式连接中断");
   }
-}
-
-export async function queryRag(
-  question: string,
-  options?: { topK?: number; history?: RagChatHistoryMessage[] }
-): Promise<RagQueryResult> {
-  return apiFetch<RagQueryResult>("/api/rag/query", {
-    method: "POST",
-    json: {
-      question,
-      ...(options?.topK != null ? { top_k: options.topK } : {}),
-      ...(options?.history?.length ? { history: options.history } : {}),
-    },
-  });
 }
 
 export async function fetchRagStats(): Promise<RagCollectionStats> {

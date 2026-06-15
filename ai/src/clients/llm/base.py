@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 
-@runtime_checkable
 class ChatLlm(Protocol):
     @property
     def provider(self) -> str:
@@ -22,12 +20,3 @@ class ChatLlm(Protocol):
 
     def stream_chat(self, system: str, user: str) -> Iterator[str]:
         ...
-
-
-@dataclass(frozen=True)
-class LlmProviderInfo:
-    id: str
-    label: str
-    default_model: str
-    requires_api_key: bool
-    description: str

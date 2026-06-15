@@ -1,11 +1,11 @@
-"""OpenAI Chat Completions ?? LLM?DeepSeek V4??? GLM ??????????"""
+"""OpenAI Chat Completions 兼容 LLM（DeepSeek V4、GLM 等通用接口）"""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from functools import lru_cache
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from clients.llm.base import ChatLlm
@@ -59,34 +59,70 @@ class OpenAICompatibleChatLlm:
 
     def chat(self, system: str, user: str) -> str:
         if not self._api_key:
-            raise ValueError("??? LLM_API_KEY????? DEEPSEEK_API_KEY?")
-        llm = ChatOpenAI(
-            model=self._model,
-            api_key=self._api_key,
-            base_url=self._base_url,
-            temperature=self._temperature,
-        )
+            raise ValueError("请设置 LLM_API_KEY（或 DEEPSEEK_API_KEY）")
+        llm = self.build_chat_model()
         response = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
         return _extract_text(response.content)
 
     def stream_chat(self, system: str, user: str) -> Iterator[str]:
         if not self._api_key:
-            raise ValueError("??? LLM_API_KEY????? DEEPSEEK_API_KEY?")
-        llm = ChatOpenAI(
-            model=self._model,
-            api_key=self._api_key,
-            base_url=self._base_url,
-            temperature=self._temperature,
-        )
+            raise ValueError("请设置 LLM_API_KEY（或 DEEPSEEK_API_KEY）")
+        llm = self.build_chat_model()
         messages = [SystemMessage(content=system), HumanMessage(content=user)]
         for chunk in llm.stream(messages):
             delta = _extract_stream_delta(chunk.content)
             if delta:
                 yield delta
 
+    # ── Tool Calling (Agent 模式) ────────────────────────────────
 
-def clear_chat_llm_cache() -> None:
-    get_chat_llm.cache_clear()
+    def build_chat_model(self) -> ChatOpenAI:
+        """Create a ChatOpenAI instance with current config."""
+        return ChatOpenAI(
+            model=self._model,
+            api_key=self._api_key,
+            base_url=self._base_url,
+            temperature=self._temperature,
+        )
+
+    def chat_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[dict],
+    ) -> AIMessage:
+        """Chat with tool calling support (OpenAI function-calling format).
+
+        Args:
+            messages: LangChain BaseMessage list (SystemMessage, HumanMessage,
+                      AIMessage, ToolMessage, etc.)
+            tools: OpenAI-compatible tool definitions list.
+                   Each tool: {\"type\": \"function\", \"function\": {\"name\":..., \"description\":..., \"parameters\":...}}
+
+        Returns:
+            AIMessage — may have .tool_calls populated if the model decides to
+            call tools, or .content set to the final answer text.
+        """
+        if not self._api_key:
+            raise ValueError("请设置 LLM_API_KEY（或 DEEPSEEK_API_KEY）")
+        llm = self.build_chat_model()
+        model = llm.bind_tools(tools)
+        return model.invoke(messages)
+
+    def stream_with_tools(
+        self,
+        messages: list[BaseMessage],
+        tools: list[dict],
+    ) -> Iterator[AIMessage]:
+        """Stream with tool calling support.
+
+        Yields AIMessage chunks. The caller should accumulate
+        tool_call_chunks and content for the final result.
+        """
+        if not self._api_key:
+            raise ValueError("请设置 LLM_API_KEY（或 DEEPSEEK_API_KEY）")
+        llm = self.build_chat_model()
+        model = llm.bind_tools(tools)
+        return model.stream(messages)
 
 
 @lru_cache

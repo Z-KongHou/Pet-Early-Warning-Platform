@@ -27,6 +27,8 @@ class IngestResponse(BaseModel):
 class CollectionStatsResponse(BaseModel):
     collection: str
     document_count: int
+    bm25_chunk_count: int = Field(default=0, description="BM25 索引中的片段数")
+    facts_count: int = Field(default=0, description="结构化事实条目数")
     persist_dir: str
 
 
@@ -62,8 +64,4 @@ class QueryResponse(BaseModel):
     english_question: str | None = Field(
         default=None,
         description="用于向量检索的英文问句；非英文提问时返回",
-    )
-    translate_model: str | None = Field(
-        default=None,
-        description="回译使用的 Ollama 模型；英文提问时为 null",
     )

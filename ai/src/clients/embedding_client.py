@@ -26,7 +26,13 @@ class NomicOllamaEmbeddings(Embeddings):
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         prefixed = [f"{DOCUMENT_PREFIX}{text}" for text in texts]
-        return self._inner.embed_documents(prefixed)
+        # Batch to avoid ollama client issues with very large single calls
+        batch_size = 100
+        all_embeddings: list[list[float]] = []
+        for i in range(0, len(prefixed), batch_size):
+            batch = prefixed[i : i + batch_size]
+            all_embeddings.extend(self._inner.embed_documents(batch))
+        return all_embeddings
 
     def embed_query(self, text: str) -> list[float]:
         return self._inner.embed_query(f"{QUERY_PREFIX}{text}")
