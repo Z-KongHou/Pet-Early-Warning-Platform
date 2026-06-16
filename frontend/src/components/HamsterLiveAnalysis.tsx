@@ -221,7 +221,7 @@ export function HamsterLiveAnalysis({
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
-      if (files?.length) setUploadedReferences(files);
+      if (files?.length) setUploadedReferences(Array.from(files));
       e.target.value = "";
     },
     [setUploadedReferences]

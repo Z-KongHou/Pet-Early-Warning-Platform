@@ -6,10 +6,12 @@ import com.hamster.yingshi.config.AiProperties;
 import com.hamster.yingshi.entity.ActivityHistory;
 import com.hamster.yingshi.entity.Camera;
 import com.hamster.yingshi.entity.PetAnalysis;
+import com.hamster.yingshi.event.ActivityAnalyzedEvent;
 import com.hamster.yingshi.mapper.PetAnalysisMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -42,6 +44,12 @@ public class FrameCaptureService {
 
     @Autowired
     private AiProperties aiProperties;
+
+    @Autowired
+    private FrameDataService frameDataService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -90,6 +98,23 @@ public class FrameCaptureService {
 
         saveAnalysisResult(camera, analysisResult);
         saveActivityHistory(camera, analysisResult);
+        publishActivityAnalyzedEvent(camera, analysisResult);
+    }
+
+    /**
+     * Publish an event so downstream listeners can create alerts / push
+     * notifications without coupling to the frame-capture flow.
+     *
+     * <p>A failure here is logged but never propagated — it must not block
+     * the scheduled capture loop.</p>
+     */
+    private void publishActivityAnalyzedEvent(Camera camera, JsonNode result) {
+        try {
+            eventPublisher.publishEvent(new ActivityAnalyzedEvent(this, camera, result));
+        } catch (Exception e) {
+            log.error("Failed to publish ActivityAnalyzedEvent for camera {}: {}",
+                    camera.getId(), e.getMessage());
+        }
     }
 
     private byte[] captureFrame(String streamUrl) {
@@ -207,6 +232,9 @@ public class FrameCaptureService {
             petAnalysisMapper.insert(analysis);
             log.info("Pet analysis saved for camera {}: hasPet={}, movement={}, food={}",
                     camera.getId(), analysis.getHasPet(), analysis.getMovementState(), analysis.getFoodState());
+
+            // 每个用户只保留最新 20 条
+            frameDataService.evictOldPetAnalysis(camera.getUserId());
         } catch (Exception e) {
             log.error("Failed to save pet analysis: {}", e.getMessage());
         }

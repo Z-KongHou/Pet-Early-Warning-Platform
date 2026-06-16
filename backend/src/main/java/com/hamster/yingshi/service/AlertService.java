@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 @Service
@@ -60,6 +61,27 @@ public class AlertService {
         alert.setHandlerId(handlerId);
         alertMapper.updateById(alert);
         return alert;
+    }
+
+    /**
+     * Check whether an alert with the same (hamsterId, activityStatus) already exists
+     * within the given time window. Used for dedup before creating a new alert.
+     *
+     * @param hamsterId      the hamster to check
+     * @param activityStatus the alert status (high / low)
+     * @param window         look-back duration from now
+     * @return true if a duplicate exists and should be suppressed
+     */
+    public boolean hasDuplicateWithinWindow(Integer hamsterId, String activityStatus, Duration window) {
+        LocalDateTime cutoff = LocalDateTime.now().minus(window);
+        Long count = alertMapper.selectCount(
+            new LambdaQueryWrapper<Alert>()
+                .eq(Alert::getHamsterId, hamsterId)
+                .eq(Alert::getActivityStatus, activityStatus)
+                .eq(Alert::getIsDeleted, 0)
+                .ge(Alert::getCreatedAt, cutoff)
+        );
+        return count != null && count > 0;
     }
 
     public void delete(Integer id) {

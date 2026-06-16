@@ -14,8 +14,11 @@ public class AnalysisController {
     private AnalysisService analysisService;
 
     @PostMapping("/activity")
-    public Result<AnalysisService.AnalysisResult> analyzeActivity(@RequestBody AnalysisRequest request) {
-        AnalysisService.AnalysisResult result = analysisService.analyzeActivity(request.getCameraId(), request.getImageUrl());
+    public Result<AnalysisService.AnalysisResult> analyzeActivity(
+            @RequestBody AnalysisRequest request,
+            @RequestParam(defaultValue = "false") boolean demo) {
+        AnalysisService.AnalysisResult result = analysisService.analyzeActivity(
+                request.getCameraId(), request.getImageUrl(), demo);
         return Result.success(result);
     }
 }

@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from repositories.frame_repository import SQLiteFrameRepository
-    from repositories.state_repository import MemoryStateRepository
+    from repositories.frame_repository import BackendFrameRepository
+    from repositories.state_repository import BackendStateRepository
 
 
 class GetActivityHistoryTool:
@@ -29,7 +29,7 @@ class GetActivityHistoryTool:
         },
     }
 
-    def __init__(self, frame_repo: SQLiteFrameRepository) -> None:
+    def __init__(self, frame_repo: BackendFrameRepository) -> None:
         self._repo = frame_repo
 
     def execute(self, camera_id: str = "default_camera") -> str:
@@ -93,7 +93,7 @@ class CheckCurrentStateTool:
         },
     }
 
-    def __init__(self, state_repo: MemoryStateRepository) -> None:
+    def __init__(self, state_repo: BackendStateRepository) -> None:
         self._state = state_repo
 
     def execute(self, camera_id: str = "default_camera") -> str:

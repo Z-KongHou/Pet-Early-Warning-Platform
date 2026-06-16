@@ -29,9 +29,11 @@ def update_pet_state(camera_id: str, analysis: dict, repository: StateRepository
             analysis["is_eating"] = False
 
     stationary_duration = current_time - state["stationary_start_time"]
+    analysis["anomaly"]["stationary_duration"] = stationary_duration
     analysis["anomaly"]["long_stationary"] = stationary_duration > settings.stationary_threshold
 
     no_eating_duration = current_time - state["last_eating_time"]
+    analysis["anomaly"]["no_eating_duration"] = no_eating_duration
     analysis["anomaly"]["no_eating"] = no_eating_duration > settings.no_eating_threshold
 
     if "food_status" not in analysis:

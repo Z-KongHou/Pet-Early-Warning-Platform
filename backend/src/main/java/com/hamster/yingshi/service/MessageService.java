@@ -10,11 +10,16 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
+import java.util.List;
+
 @Service
 public class MessageService {
 
     @Autowired
     private MessageMapper messageMapper;
+
+    @Autowired
+    private AlertService alertService;
 
     public Message create(Message message) {
         messageMapper.insert(message);
@@ -58,9 +63,26 @@ public class MessageService {
         Message message = findById(id);
         message.setIsRead(1);
         messageMapper.updateById(message);
+
+        // Cascade: mark the linked alert as handled (status=2)
+        if (message.getAlertId() != null) {
+            try {
+                alertService.updateStatus(message.getAlertId(), 2, "用户已读站内信", null);
+            } catch (Exception e) {
+                // Alert may have been deleted — non-fatal
+            }
+        }
     }
 
     public void markAllAsRead(Integer userId) {
+        // Fetch unread messages first to cascade alert updates
+        List<Message> unreadMessages = messageMapper.selectList(
+            new LambdaQueryWrapper<Message>()
+                .eq(Message::getUserId, userId)
+                .eq(Message::getIsRead, 0)
+                .eq(Message::getIsDeleted, 0)
+        );
+
         messageMapper.update(null,
             new LambdaUpdateWrapper<Message>()
                 .eq(Message::getUserId, userId)
@@ -68,6 +90,17 @@ public class MessageService {
                 .eq(Message::getIsDeleted, 0)
                 .set(Message::getIsRead, 1)
         );
+
+        // Cascade: mark all linked alerts as handled
+        for (Message m : unreadMessages) {
+            if (m.getAlertId() != null) {
+                try {
+                    alertService.updateStatus(m.getAlertId(), 2, "用户已读站内信（全部已读）", null);
+                } catch (Exception e) {
+                    // Alert may have been deleted — non-fatal
+                }
+            }
+        }
     }
 
     public void delete(Integer id) {

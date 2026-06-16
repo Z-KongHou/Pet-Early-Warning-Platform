@@ -85,7 +85,8 @@
       "Bash(nslookup *)",
       "PowerShell(mysql *)",
       "Read(//c/Program Files/MySQL/**)",
-      "Read(//c/ProgramData/MySQL/**)"
+      "Read(//c/ProgramData/MySQL/**)",
+      "Bash(pip list *)"
     ]
   }
 }

@@ -43,3 +43,12 @@ recording:
   template-id: 3624
   space-name: "hamster_default"
   expire-days: 7
+
+alert:
+  triggers:
+    high: true
+    low: false
+  dedup-windows:
+    high: 30m
+    low: 60m
+  default-threshold: 30

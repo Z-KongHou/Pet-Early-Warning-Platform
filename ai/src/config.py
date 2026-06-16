@@ -66,7 +66,11 @@ class Settings:
     night_stationary_threshold: int = 3 * 60
     day_eating_threshold: int = 3 * 60
     night_eating_threshold: int = 3 * 60
-    database_path: str = os.getenv("PET_ANALYSIS_DB_PATH", "pet_analysis.db")
+    activity_weight_movement: float = float(os.getenv("ACTIVITY_WEIGHT_MOVEMENT", "0.40"))
+    activity_weight_food: float = float(os.getenv("ACTIVITY_WEIGHT_FOOD", "0.25"))
+    activity_weight_presence: float = float(os.getenv("ACTIVITY_WEIGHT_PRESENCE", "0.20"))
+    activity_weight_anomaly: float = float(os.getenv("ACTIVITY_WEIGHT_ANOMALY", "0.15"))
+    backend_url: str = os.getenv("BACKEND_URL", "http://127.0.0.1:8081")
     upload_dir_name: str = os.getenv("PET_UPLOAD_DIR", "upload")
     rag_data_dir: str = os.getenv("RAG_DATA_DIR", "data")
     chroma_persist_dir: str = os.getenv("CHROMA_PERSIST_DIR", "chroma_db")

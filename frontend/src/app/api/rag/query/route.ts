@@ -12,6 +12,10 @@ export async function POST(req: Request): Promise<Response> {
     const requestId = req.headers.get("X-Request-Id");
     if (requestId) headers.set("X-Request-Id", requestId);
 
+    // Forward Authorization header to AI service
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader) headers.set("Authorization", authHeader);
+
     const res = await fetch(target, {
       method: "POST",
       headers,

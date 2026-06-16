@@ -10,8 +10,10 @@ export default function ActivityPage() {
   const [hamsterId, setHamsterId] = useState("1");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [appliedStartDate, setAppliedStartDate] = useState("");
+  const [appliedEndDate, setAppliedEndDate] = useState("");
   const [actPage, setActPage] = useState(1);
-  const [actSize, setActSize] = useState(20);
+  const actSize = 15;
 
   const [activityData, setActivityData] = useState<Pagination<ActivityHistory> | null>(null);
   const [activityErr, setActivityErr] = useState<string | null>(null);
@@ -34,10 +36,10 @@ export default function ActivityPage() {
     });
     const id = hamsterId.trim();
     if (id) params.set("hamsterId", id);
-    if (startDate.trim()) params.set("startDate", startDate.trim());
-    if (endDate.trim()) params.set("endDate", endDate.trim());
+    if (appliedStartDate.trim()) params.set("startDate", appliedStartDate.trim());
+    if (appliedEndDate.trim()) params.set("endDate", appliedEndDate.trim());
     return `/api/activity/history?${params.toString()}`;
-  }, [hamsterId, startDate, endDate, actPage, actSize]);
+  }, [hamsterId, appliedStartDate, appliedEndDate, actPage, actSize]);
 
   const alertsQuery = useMemo(() => {
     const params = new URLSearchParams({ page: "1", size: "20" });
@@ -167,26 +169,27 @@ export default function ActivityPage() {
               className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900/20"
             />
           </div>
-          <div>
-            <label className="text-sm text-zinc-600">活动页码</label>
-            <input
-              type="number"
-              min={1}
-              value={actPage}
-              onChange={(e) => setActPage(Math.max(1, Number(e.target.value) || 1))}
-              className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900/20"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-zinc-600">每页条数</label>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={actSize}
-              onChange={(e) => setActSize(Math.min(100, Math.max(1, Number(e.target.value) || 20)))}
-              className="mt-1 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900/20"
-            />
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setActPage((p) => Math.max(1, p - 1))}
+              disabled={actPage <= 1}
+              className="mt-1 rounded-md border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-40"
+            >
+              上一页
+            </button>
+            <span className="text-sm text-zinc-600 py-2">第 {actPage} 页</span>
+            <button
+              type="button"
+              onClick={() => {
+                const totalPages = activityData?.total ? Math.ceil(activityData.total / actSize) : 1;
+                setActPage((p) => Math.min(totalPages, p + 1));
+              }}
+              disabled={activityData?.total ? actPage >= Math.ceil(activityData.total / actSize) : true}
+              className="mt-1 rounded-md border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-40"
+            >
+              下一页
+            </button>
           </div>
           <div>
             <label className="text-sm text-zinc-600">预警状态</label>
@@ -214,19 +217,32 @@ export default function ActivityPage() {
       <section className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
         <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-3 flex items-center justify-between gap-2 flex-wrap">
           <h2 className="text-sm font-semibold text-zinc-800">活动记录</h2>
-          <button
-            type="button"
-            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50"
-            onClick={() => void refreshActivity().catch((e) => setActivityErr(e instanceof Error ? e.message : "刷新失败"))}
-          >
-            仅刷新活动
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+              onClick={() => {
+                setAppliedStartDate(startDate);
+                setAppliedEndDate(endDate);
+                setActPage(1);
+              }}
+            >
+              查询
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50"
+              onClick={() => void refreshActivity().catch((e) => setActivityErr(e instanceof Error ? e.message : "刷新失败"))}
+            >
+              仅刷新活动
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50/80 text-zinc-600">
               <tr>
-                <th className="px-4 py-2 text-left">ID</th>
+                <th className="px-4 py-2 text-left">仓鼠ID</th>
                 <th className="px-4 py-2 text-left">cameraId</th>
                 <th className="px-4 py-2 text-left">score</th>
                 <th className="px-4 py-2 text-left">status</th>
@@ -237,7 +253,7 @@ export default function ActivityPage() {
             <tbody>
               {(activityData?.list ?? []).map((row) => (
                 <tr key={row.id} className="border-t border-zinc-100">
-                  <td className="px-4 py-2">{row.id}</td>
+                  <td className="px-4 py-2">{row.hamsterId}</td>
                   <td className="px-4 py-2">{row.cameraId ?? "-"}</td>
                   <td className="px-4 py-2 font-mono text-xs">{row.activityScore ?? "-"}</td>
                   <td className="px-4 py-2 font-mono text-xs">{row.status ?? "-"}</td>
@@ -259,7 +275,7 @@ export default function ActivityPage() {
         </div>
         {activityData && activityData.total != null ? (
           <div className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500">
-            共 {activityData.total} 条 · 第 {activityData.page ?? actPage} 页 · 每页 {activityData.size ?? actSize} 条
+            共 {activityData.total} 条 · 第 {activityData.page ?? actPage} 页 · 每页 {actSize} 条
           </div>
         ) : null}
       </section>

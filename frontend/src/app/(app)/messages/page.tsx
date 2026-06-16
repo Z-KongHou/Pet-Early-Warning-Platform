@@ -2,15 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshButton } from "@/components/RefreshButton";
+import { useNotifications } from "@/components/NotificationContext";
 import { apiFetch } from "@/lib/http";
 import { authHeaders } from "@/lib/authed";
 import type { Message, Pagination } from "@/lib/types";
 
 export default function MessagesPage() {
   const [data, setData] = useState<Pagination<Message> | null>(null);
-  const [unread, setUnread] = useState<number>(0);
   const [err, setErr] = useState<string | null>(null);
   const [isRead, setIsRead] = useState<string>("");
+
+  const { unreadCount, refreshUnread, alertVersion } = useNotifications();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ page: "1", size: "20" });
@@ -19,14 +21,14 @@ export default function MessagesPage() {
   }, [isRead]);
 
   const refresh = useCallback(async () => {
-    const [list, count] = await Promise.all([
+    const [list] = await Promise.all([
       apiFetch<Pagination<Message>>(query, { headers: authHeaders() }),
-      apiFetch<{ count: number }>("/api/messages/unread-count", { headers: authHeaders() }),
+      refreshUnread(),
     ]);
     setData(list);
-    setUnread(count.count);
-  }, [query]);
+  }, [query, refreshUnread]);
 
+  // Initial load + refresh when filter changes
   useEffect(() => {
     (async () => {
       try {
@@ -37,13 +39,20 @@ export default function MessagesPage() {
     })();
   }, [refresh]);
 
+  // Auto-refresh when a new alert arrives via SSE
+  useEffect(() => {
+    if (alertVersion > 0) {
+      refresh();
+    }
+  }, [alertVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold">站内信</h1>
           <p className="text-sm text-zinc-500">
-            未读：<span className="font-medium">{unread}</span>
+            未读：<span className="font-medium">{unreadCount}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -60,7 +69,10 @@ export default function MessagesPage() {
           <button
             className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             onClick={async () => {
-              await apiFetch("/api/messages/read-all", { method: "POST", headers: authHeaders() });
+              await apiFetch("/api/messages/read-all", {
+                method: "POST",
+                headers: authHeaders(),
+              });
               await refresh();
             }}
           >
@@ -141,4 +153,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-

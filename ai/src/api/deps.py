@@ -1,14 +1,15 @@
 from functools import lru_cache
 
+from clients.backend_client import BackendClient
 from clients.embedding_client import get_embeddings
 from clients.ezviz_client import EzvizClient
 from clients.timestamp_extractor import TimestampExtractor
 from config import settings
 from repositories.bm25_index import Bm25IndexRepository
 from repositories.facts_repository import FactsRepository
-from repositories.frame_repository import SQLiteFrameRepository
+from repositories.frame_repository import BackendFrameRepository
 from repositories.preference_repository import PreferenceRepository
-from repositories.state_repository import MemoryStateRepository
+from repositories.state_repository import BackendStateRepository
 from repositories.vector_store import VectorStoreRepository
 from services.hamster.service import AnalyzeHamsterUseCase
 from services.rag.extraction.facts import FactExtractor
@@ -27,15 +28,18 @@ from clients.llm.client import get_chat_llm
 
 
 @lru_cache
-def get_state_repository() -> MemoryStateRepository:
-    return MemoryStateRepository()
+def get_backend_client() -> BackendClient:
+    return BackendClient()
 
 
 @lru_cache
-def get_frame_repository() -> SQLiteFrameRepository:
-    repo = SQLiteFrameRepository()
-    repo.init_schema()
-    return repo
+def get_state_repository() -> BackendStateRepository:
+    return BackendStateRepository(get_backend_client())
+
+
+@lru_cache
+def get_frame_repository() -> BackendFrameRepository:
+    return BackendFrameRepository(get_backend_client())
 
 
 @lru_cache
@@ -137,8 +141,7 @@ def get_tool_registry() -> ToolRegistry:
         reranker=get_reranker() if settings.rag_rerank_enabled else None,
         facts_repo=get_facts_repository(),
         prefs_repo=get_preference_repository(),
-        frame_repo=get_frame_repository(),
-        state_repo=get_state_repository(),
+        backend_client=get_backend_client(),
     )
     return registry
 

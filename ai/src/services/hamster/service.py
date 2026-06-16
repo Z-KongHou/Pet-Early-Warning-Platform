@@ -10,8 +10,9 @@ from clients.ezviz_client import EzvizClient
 from clients.image_processor import compress_image
 from clients.timestamp_extractor import TimestampExtractor
 from config import settings
-from repositories.frame_repository import SQLiteFrameRepository
+from repositories.frame_repository import BackendFrameRepository
 from repositories.protocols import StateRepository
+from repositories.state_repository import BackendStateRepository
 from services.hamster.analysis import update_pet_state
 from services.hamster.bowl import analyze_bowl, is_in_food_bowl
 from services.hamster.detection import parse_pet_detection
@@ -100,7 +101,7 @@ class AnalyzeHamsterUseCase:
         self,
         ezviz: EzvizClient,
         state_repository: StateRepository,
-        frame_repository: SQLiteFrameRepository,
+        frame_repository: BackendFrameRepository,
         timestamp_extractor: TimestampExtractor,
     ) -> None:
         self._ezviz = ezviz
@@ -244,10 +245,16 @@ class AnalyzeHamsterUseCase:
         self._frame_repository.insert_analysis_record(camera_id, reference_time, analysis)
         analysis = update_pet_state(camera_id, analysis, self._state_repository)
 
-        activity_score = calculate_activity_score(analysis)
+        # 持久化状态变更到后端
+        if isinstance(self._state_repository, BackendStateRepository):
+            state = self._state_repository.get(camera_id)
+            self._state_repository.save_state(camera_id, state)
+
+        pet_frame_count = sum(1 for frame in analyzed_frames if frame["analysis"].get("has_pet"))
+        pet_frame_ratio = pet_frame_count / len(analyzed_frames) if analyzed_frames else 0
+        activity_score = calculate_activity_score(analysis, movement_info["movement_ratio"], pet_frame_ratio)
         activity_status = get_activity_status(activity_score)
         analysis_result_text = get_analysis_result(analysis)
-        pet_frame_count = sum(1 for frame in analyzed_frames if frame["analysis"].get("has_pet"))
 
         return {
             "result": {

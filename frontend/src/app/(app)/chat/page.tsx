@@ -1,28 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   fetchRagStats,
   queryRagStream,
   type RagChatHistoryMessage,
-  type RagQueryResult,
 } from "@/lib/rag";
-
-type ChatRole = "user" | "assistant";
-
-type ChatMessage = {
-  id: string;
-  role: ChatRole;
-  content: string;
-  streaming?: boolean;
-  meta?: Pick<
-    RagQueryResult,
-    "llm_model" | "detected_language" | "english_question"
-  >;
-};
+import { useChatStore, type ChatMessage } from "@/lib/store";
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { messages, addMessage, updateMessage, removeMessage, clearMessages } =
+    useChatStore();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -52,11 +42,9 @@ export default function ChatPage() {
 
   const patchAssistant = useCallback(
     (assistantId: string, patch: Partial<ChatMessage>) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, ...patch } : m))
-      );
+      updateMessage(assistantId, patch);
     },
-    []
+    [updateMessage]
   );
 
   const send = useCallback(async () => {
@@ -73,16 +61,13 @@ export default function ChatPage() {
       .filter((m) => m.content.trim() && !m.streaming)
       .map((m) => ({ role: m.role, content: m.content }));
     const assistantId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), role: "user", content: question },
-      {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        streaming: true,
-      },
-    ]);
+    addMessage({ id: crypto.randomUUID(), role: "user", content: question });
+    addMessage({
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      streaming: true,
+    });
     setLoading(true);
 
     await queryRagStream(
@@ -98,11 +83,11 @@ export default function ChatPage() {
           });
         },
         onDelta: (text) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + text } : m
-            )
-          );
+          // streaming append via store
+          const current = useChatStore.getState().messages.find((m) => m.id === assistantId);
+          if (current) {
+            updateMessage(assistantId, { content: current.content + text });
+          }
         },
         onDone: (result) => {
           patchAssistant(assistantId, {
@@ -117,7 +102,7 @@ export default function ChatPage() {
         },
         onError: (message) => {
           setErr(message);
-          setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+          removeMessage(assistantId);
         },
       },
       { history, signal: controller.signal }
@@ -180,12 +165,14 @@ export default function ChatPage() {
                   {m.role === "assistant" && m.streaming && !m.content ? (
                     <span className="text-zinc-500">正在生成回答…</span>
                   ) : (
-                    <>
-                      {m.content}
+                    <div className="prose prose-sm max-w-none prose-zinc dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.content}
+                      </ReactMarkdown>
                       {m.streaming ? (
                         <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-zinc-400 align-middle" />
                       ) : null}
-                    </>
+                    </div>
                   )}
                   {m.role === "assistant" && !m.streaming && m.meta?.llm_model ? (
                     <p className="mt-2 text-[11px] text-zinc-400">

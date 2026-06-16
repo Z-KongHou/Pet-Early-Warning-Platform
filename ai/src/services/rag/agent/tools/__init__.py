@@ -1,11 +1,16 @@
-"""Register all agent tools into a ToolRegistry."""
+"""Register all agent tools into a ToolRegistry.
+
+Tool philosophy: few, broad tools > many narrow tools.
+The LLM performs better with 4 tools than 8.
+"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from clients.backend_client import BackendClient
 from services.rag.agent.registry import ToolRegistry
-from services.rag.agent.tools.monitoring import CheckCurrentStateTool, GetActivityHistoryTool
+from services.rag.agent.tools.database_context import ExecuteSqlTool
 from services.rag.agent.tools.knowledge import (
     GetUserContextTool,
     LookupFactsTool,
@@ -14,9 +19,7 @@ from services.rag.agent.tools.knowledge import (
 
 if TYPE_CHECKING:
     from repositories.facts_repository import FactsRepository
-    from repositories.frame_repository import SQLiteFrameRepository
     from repositories.preference_repository import PreferenceRepository
-    from repositories.state_repository import MemoryStateRepository
     from services.rag.retrieval.hybrid import HybridRetriever
     from services.rag.retrieval.rewriter import QueryRewriter
     from services.rag.retrieval.vector import RagRetriever
@@ -32,16 +35,15 @@ def register_default_tools(
     reranker: LlmReranker | None = None,
     facts_repo: FactsRepository | None = None,
     prefs_repo: PreferenceRepository | None = None,
-    frame_repo: SQLiteFrameRepository | None = None,
-    state_repo: MemoryStateRepository | None = None,
+    backend_client: BackendClient | None = None,
 ) -> ToolRegistry:
-    """Register all available tools into the given registry.
+    """Register all available tools (4 total)."""
 
-    Each tool receives its dependencies via constructor injection.
-    Tools with missing dependencies are skipped (with a warning).
-    """
+    # 1. SQL query tool — AI writes its own SELECT statements
+    if backend_client is not None:
+        registry.register(ExecuteSqlTool(backend_client=backend_client))
 
-    # Knowledge retrieval tools
+    # 2. Knowledge base search
     registry.register(
         SearchKnowledgeBaseTool(
             retriever=retriever,
@@ -51,17 +53,12 @@ def register_default_tools(
         )
     )
 
+    # 3. Curated veterinary facts
     if facts_repo is not None:
         registry.register(LookupFactsTool(facts_repo=facts_repo))
 
+    # 4. LLM-extracted user preferences
     if prefs_repo is not None:
         registry.register(GetUserContextTool(prefs_repo=prefs_repo))
-
-    # Pet monitoring tools
-    if frame_repo is not None:
-        registry.register(GetActivityHistoryTool(frame_repo=frame_repo))
-
-    if state_repo is not None:
-        registry.register(CheckCurrentStateTool(state_repo=state_repo))
 
     return registry

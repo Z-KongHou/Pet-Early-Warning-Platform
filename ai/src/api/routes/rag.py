@@ -1,5 +1,6 @@
 """RAG 路由：知识库入库与集合状态。"""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Header
@@ -17,8 +18,11 @@ from api.schemas.rag import (
 from services.rag.utils.history import ChatTurn
 from services.rag.orchestration.ingest import IngestService
 from services.rag.orchestration.query import QueryService
+from utils.auth import set_current_token
 from utils.response import error_response, success_response
 from utils.sse import format_sse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/rag", tags=["rag"])
 
@@ -67,9 +71,11 @@ async def ingest_documents(
 async def rag_query(
     body: QueryRequest,
     x_request_id: str | None = Header(None, alias="X-Request-Id"),
+    authorization: str | None = Header(None),
     service: QueryService = Depends(get_query_service),
 ):
     request_id = x_request_id or str(uuid.uuid4())
+    _resolve_user(authorization)
     try:
         result = service.ask(body.question, top_k=body.top_k, history=_to_chat_turns(body))
         return success_response(
@@ -105,8 +111,11 @@ async def rag_query(
 )
 async def rag_query_stream(
     body: QueryRequest,
+    authorization: str | None = Header(None),
     service: QueryService = Depends(get_query_service),
 ):
+    _resolve_user(authorization)
+
     def event_stream():
         try:
             for event, data in service.ask_stream(
@@ -139,3 +148,10 @@ async def collection_stats(
 ):
     stats = service.collection_stats()
     return success_response(CollectionStatsResponse(**stats).model_dump())
+
+
+# -- helpers --
+
+def _resolve_user(authorization: str | None) -> None:
+    """Store the Authorization header for downstream forwarding to backend."""
+    set_current_token(authorization)
